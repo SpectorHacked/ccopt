@@ -1,0 +1,22 @@
+{
+  "name": "ccopt",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ccopt \u2014 The Agent Waste Report. Graph-based determinism detection for AI agents.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:server": "npm run dev -w @ccopt/server",
+    "bundle": "npm run build -w @ccopt/core -w @ccopt/cli && esbuild packages/cli/src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/ccopt.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}

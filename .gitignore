@@ -1,0 +1,17 @@
+node_modules/
+packages/*/dist/
+data/
+*.log
+ccopt-report.html
+ccopt-report.json
+demo-report.html
+demo-report.json
+.env
+
+# single-file distribution: everything in /dist is generated, but the bundled
+# CLI is committed so the GitHub Action and raw-URL install work
+/dist/*
+!/dist/ccopt.cjs
+
+# internal business docs stay local
+ccopt-mvp-spec.md
