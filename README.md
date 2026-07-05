@@ -11,6 +11,25 @@ Implements the MVP scoped in the internal `ccopt-mvp-spec.md` (kept out of the p
 3. **Graph + fingerprint** — each run becomes a DAG (temporal + dataflow edges) with three fingerprints: **L0** (exact: structure + labels + canonical I/O), **L1** (shape: same procedure, different data — the money layer), **L2** (family: local n-gram TF-IDF cosine clustering of near-miss shapes; no API dependency).
 4. **Findings** — per-cluster metrics (determinism score, failure rate, retry motifs, model mix, volatile slots) map to dollar-ranked findings: **Compile it / Cache it / Right-size it / Fix it / Precompute it / Align it**. Top 5 by `saving × confidence ÷ effort`.
 5. **Report** — self-contained HTML with SVG graph chains + JSON artifact. Rendered identically by local mode and the hosted viewer.
+6. **AI cost analysis (trigger-only)** — on demand, an LLM goes over the runs themselves (per-run digests: tools used, files/folders read, web fetches/searches, commands, prompt sizes, cache economics — every digest linked to its run graph) and produces actionable bullets: prompt reduction/caching, web-search → cached summary, deterministic segments → plain script or a smaller model for just that part of the graph, retry fixes. Every bullet carries an estimated monthly saving, an explicit **performance-risk** rating, and evidence runs. Nothing is generated before you ask.
+
+## Hosted UI
+
+All browser views authenticate with `?key=<tenant API key>`:
+
+| Page | What |
+|---|---|
+| `/ui` | Workspace dashboard: agents (click to filter), AI cost analysis, reports, recent sessions. **Run optimization** button triggers the AI pass — gated so it only re-runs when ≥5 new runs arrived since the last analysis (`force` link to override). |
+| `/r/:reportId` | The Waste Report (unguessable UUID, share-by-link). |
+| `/s/:sessionId` | Full session transcript (owner key only, secrets redacted by default; `&reveal=1` shows raw). |
+| `/g/:sessionId` | The run graph: canonical DAG with dataflow arcs + per-node canonical/raw I/O (owner key only, redacted by default). |
+| `/c/:clusterId` | Procedure cluster: determinism verdict, the shape, volatile slots (the parameters), metrics, evidence runs. |
+
+### Privacy model
+
+API keys carry a **role**: `owner` or `member`. Member keys (teammates) can sync runs, see the dashboard/reports/clusters, and trigger optimizations — but raw session content (`/s`, `/g`) is owner-only. Even for the owner, credential-shaped values (vendor API keys, JWTs, PEM blocks, connection-string passwords, `*_SECRET=`/`password=` assignments) are **redacted at render**; `&reveal=1` shows raw content with an explicit banner. The same deep-redaction is applied to every packet sent to the analysis LLM, so tenant secrets never reach the model provider. (Honest limit: raw bytes still exist at rest in the blob store and Postgres — protect those credentials accordingly.)
+
+Mint additional keys per tenant: `POST /api/v1/tenants/:tenantId/keys {"label":"…","role":"owner"|"member"}` with the admin token.
 
 ## Layout
 
@@ -18,7 +37,7 @@ Implements the MVP scoped in the internal `ccopt-mvp-spec.md` (kept out of the p
 |---|---|
 | `packages/core` | The engine: transcript parser, canonicalizer, graph builder, fingerprints, L2 clustering, metrics, finding mapper, report renderer |
 | `packages/cli` | `ccopt analyze` (local-only mode), `ccopt sync` (upload), `ccopt run` (CI wrapper) |
-| `packages/server` | SaaS shell: Fastify + Postgres (8 tables) + disk blob store (S3-shaped interface), tenants/API keys, gzip ingest, batch pipeline, hosted report viewer, weekly email job (outbox stub) |
+| `packages/server` | SaaS shell: Fastify + Postgres + blob store (disk or any S3-compatible), tenants/API keys with roles, gzip ingest, trigger-only pipeline, hosted viewers (dashboard/report/session/graph/cluster), secret redaction, provider-agnostic AI insights |
 
 ## Install (customers / design partners)
 
@@ -94,7 +113,26 @@ curl -X POST localhost:8787/api/v1/analyze -H 'authorization: Bearer cck_…'
 # → { reportUrl: "http://localhost:8787/r/<uuid>" }
 ```
 
-Server env: `DATABASE_URL`, `CCOPT_ADMIN_TOKEN` (required), `CCOPT_DATA_DIR` (blob root, default `./data`), `PORT` (8787), `CCOPT_PUBLIC_BASE_URL`, `CCOPT_DISABLE_JOBS=1` (tests). Analysis re-runs nightly in-process; the weekly report email is written to `<dataDir>/outbox/` (transport stub — wire SES/Resend behind `EmailSender` when design partners exist).
+Server env: `DATABASE_URL`, `CCOPT_ADMIN_TOKEN` (required), `CCOPT_DATA_DIR` (blob root, default `./data`), `PORT` (8787), `CCOPT_PUBLIC_BASE_URL`. **Everything is trigger-only** — there are no scheduled jobs; reports and AI analyses are generated exactly when requested.
+
+### AI insights (trigger-only, provider-agnostic)
+
+```bash
+# one call = fresh deterministic report for the agent + the AI pass over its runs
+curl -X POST "https://<server>/api/v1/insights?agent=<substr>&runs=40" \
+  -H "authorization: Bearer cck_…"        # &force=1 bypasses the 5-new-runs freshness gate
+```
+
+The LLM is pluggable via env — no code change to switch providers:
+
+| Env | Anthropic (default) | Any OpenAI-compatible endpoint |
+|---|---|---|
+| `CCOPT_LLM_PROVIDER` | `anthropic` | `openai-compatible` |
+| `CCOPT_LLM_MODEL` | `claude-opus-4-8` (default) | e.g. `google/gemini-3.5-flash` (OpenRouter), `gpt-4o`, a local Ollama model |
+| `CCOPT_LLM_BASE_URL` | — | e.g. `https://openrouter.ai/api/v1`, `http://localhost:11434/v1` |
+| `CCOPT_LLM_API_KEY` | falls back to `ANTHROPIC_API_KEY` | falls back to `OPENAI_API_KEY` |
+
+Other useful endpoints: `POST /api/v1/analyze?agent=` (deterministic report only), `GET /api/v1/agents` (tenant inventory), `GET /api/v1/reports`, `GET /api/v1/admin/overview` (all tenants, admin token).
 
 ### Production storage & free-tier deployment
 
@@ -177,5 +215,5 @@ Each repo (or workflow) gets its own `--agent` id; the hosted report then breaks
 
 - **W1–W3 (capture, canonicalizer + golden tests, graphs, fingerprints, clustering, metrics, findings, report):** done.
 - **W4 (flagship script synthesis + replay validation):** not built yet — next.
-- **W5 (SaaS shell: tenants/keys, sync, hosted viewer, weekly email; L2):** done (email transport stubbed).
+- **W5 (SaaS shell: tenants/keys, sync, hosted viewers; L2):** done — extended beyond the plan with per-run graph/session/cluster viewers, key roles + secret redaction, and the trigger-only, provider-agnostic AI cost analysis. (Scheduled weekly email was cut by owner decision: everything is on-demand.)
 - **W6 (design partners):** go get them.
