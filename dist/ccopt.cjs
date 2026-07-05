@@ -4298,6 +4298,106 @@ program2.command("login").description("Persist the ccopt server + API key (used 
     console.log(`Saved to ${CONFIG_PATH} \u2014 server unreachable right now, will be used anyway.`);
   }
 });
+program2.command("invite").description("Print a one-line setup command for another developer (uses your login + rules)").option("--agent <substr>", "restrict their scheduled sync to this agent substring").action((opts) => {
+  const config = loadConfig();
+  if (!config.server || !config.apiKey) {
+    console.error("Run `ccopt login` first \u2014 invite packages your server + key.");
+    process.exitCode = 2;
+    return;
+  }
+  const token = {
+    v: 1,
+    server: config.server,
+    apiKey: config.apiKey,
+    agentRules: config.agentRules,
+    syncAgent: opts.agent
+  };
+  const encoded = Buffer.from(JSON.stringify(token)).toString("base64url");
+  console.log("Send this ONE command to the developer (contains the workspace API key \u2014 share privately):\n");
+  console.log(
+    `  curl -fsSL https://raw.githubusercontent.com/SpectorHacked/ccopt/main/install.sh | sh -s -- --join ${encoded}
+`
+  );
+  console.log("It installs ccopt, joins this workspace, schedules a 15-minute sync, and uploads their history.");
+});
+program2.command("join").description("Join a workspace from an invite token: config + schedule + first sync, in one shot").argument("<token>", "setup token from `ccopt invite`").action(async (rawToken) => {
+  let token;
+  try {
+    token = JSON.parse(Buffer.from(rawToken, "base64url").toString("utf8"));
+    if (token.v !== 1 || !token.server || !token.apiKey) throw new Error("missing fields");
+  } catch {
+    console.error("Invalid setup token. Ask for a fresh one via `ccopt invite`.");
+    process.exitCode = 2;
+    return;
+  }
+  const config = loadConfig();
+  config.server = token.server;
+  config.apiKey = token.apiKey;
+  if (token.agentRules) config.agentRules = token.agentRules;
+  saveConfig(config);
+  console.log(`\u2713 workspace config saved (${token.server})`);
+  try {
+    const res = await fetch(`${token.server.replace(/\/$/, "")}/api/v1/reports`, {
+      headers: { authorization: `Bearer ${token.apiKey}` }
+    });
+    console.log(res.ok ? "\u2713 server reachable, API key accepted" : `\u2717 server rejected the key (HTTP ${res.status})`);
+    if (!res.ok) process.exitCode = 1;
+  } catch (err) {
+    console.log(`! server not reachable right now (${err instanceof Error ? err.message : err}) \u2014 sync will retry on schedule`);
+  }
+  const nodeBin = process.execPath;
+  const ccoptBin = (0, import_node_path2.resolve)(process.argv[1]);
+  const syncArgs = ["sync", ...token.syncAgent ? ["--agent", token.syncAgent] : [], "--days", "7"];
+  if (process.platform === "darwin") {
+    const plistPath = (0, import_node_path2.join)((0, import_node_os2.homedir)(), "Library", "LaunchAgents", "com.ccopt.sync.plist");
+    const args = [nodeBin, ccoptBin, ...syncArgs];
+    const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ccopt.sync</string>
+  <key>ProgramArguments</key>
+  <array>
+${args.map((a) => `    <string>${a}</string>`).join("\n")}
+  </array>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>${(0, import_node_path2.join)(CCOPT_HOME, "sync.log")}</string>
+  <key>StandardErrorPath</key><string>${(0, import_node_path2.join)(CCOPT_HOME, "sync.log")}</string>
+</dict>
+</plist>
+`;
+    (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(plistPath), { recursive: true });
+    (0, import_node_fs3.mkdirSync)(CCOPT_HOME, { recursive: true });
+    (0, import_node_fs3.writeFileSync)(plistPath, plist);
+    const uid = process.getuid?.() ?? 501;
+    (0, import_node_child_process.spawnSync)("launchctl", ["bootout", `gui/${uid}/com.ccopt.sync`], { stdio: "ignore" });
+    const boot = (0, import_node_child_process.spawnSync)("launchctl", ["bootstrap", `gui/${uid}`, plistPath], { encoding: "utf8" });
+    console.log(
+      boot.status === 0 ? "\u2713 scheduled: launchd job com.ccopt.sync (every 15 min)" : `! could not load launchd job (${boot.stderr?.trim()}) \u2014 plist written to ${plistPath}`
+    );
+  } else {
+    const cronLine = `*/15 * * * * ${nodeBin} ${ccoptBin} ${syncArgs.join(" ")} >> ${(0, import_node_path2.join)(CCOPT_HOME, "sync.log")} 2>&1`;
+    const current = (0, import_node_child_process.spawnSync)("crontab", ["-l"], { encoding: "utf8" });
+    const existing = current.status === 0 ? current.stdout : "";
+    if (existing.includes("ccopt") && existing.includes("sync")) {
+      console.log("\u2713 scheduled: crontab already has a ccopt sync entry");
+    } else {
+      const set = (0, import_node_child_process.spawnSync)("crontab", ["-"], { input: `${existing.trimEnd()}
+${cronLine}
+`, encoding: "utf8" });
+      console.log(
+        set.status === 0 ? "\u2713 scheduled: cron entry added (every 15 min)" : `! could not edit crontab \u2014 add this line yourself:
+    ${cronLine}`
+      );
+    }
+  }
+  console.log("Uploading existing history\u2026");
+  const first = (0, import_node_child_process.spawnSync)(nodeBin, [ccoptBin, ...syncArgs, "--days", "30"], { stdio: "inherit" });
+  console.log(
+    first.status === 0 ? "\nDone. This machine now reports to the workspace continuously." : "\nSetup saved; first sync failed (see above) \u2014 the schedule will retry every 15 minutes."
+  );
+});
 program2.command("sync").description("Upload local session transcripts to the ccopt service").option("--server <url>", "ccopt server base URL (default: ccopt login config)").option("--key <apiKey>", "tenant API key (default: ccopt login config)").option("--source <dir...>", "transcript directories", defaultSources()).option("--days <n>", "only sync sessions modified in the last N days", "30").option("--agent <substr>", "only sync sessions whose resolved agentId contains this substring").action(async (opts) => {
   const config = loadConfig();
   const server = opts.server ?? process.env.CCOPT_SERVER ?? config.server;

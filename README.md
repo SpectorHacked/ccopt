@@ -34,6 +34,16 @@ ccopt analyze    # your first Waste Report, from transcripts you already have
 
 `ccopt doctor` is the out-of-the-box check: it finds your existing Claude Code / Agent SDK transcripts (they're already being written — capture requires nothing), confirms they parse, and tells you exactly what's missing for isolated or hosted mode.
 
+### Onboarding a teammate: one command
+
+Whoever owns the workspace runs `ccopt invite [--agent <filter>]` and sends the printed line. The teammate pastes it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SpectorHacked/ccopt/main/install.sh | sh -s -- --join <token>
+```
+
+That single command installs ccopt, saves the workspace server + key + attribution rules, schedules a recurring sync (launchd on macOS, cron on Linux — every 15 minutes, filtered so unrelated local sessions stay private), verifies the API key, and uploads their existing history. The token embeds the workspace API key — share it privately.
+
 For CI, the repo doubles as a **GitHub Action** (`action.yml`) so wrapping any agent is:
 
 ```yaml

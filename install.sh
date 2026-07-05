@@ -37,4 +37,9 @@ case ":$PATH:" in
   *) echo "note: add $BIN_DIR to your PATH" ;;
 esac
 
-"$DEST" --version >/dev/null && echo "Verify your setup with: ccopt doctor"
+# One-shot workspace onboarding:  install.sh --join <token>
+if [ "${1:-}" = "--join" ] && [ -n "${2:-}" ]; then
+  "$DEST" join "$2"
+else
+  "$DEST" --version >/dev/null && echo "Verify your setup with: ccopt doctor"
+fi
