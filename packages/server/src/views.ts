@@ -62,12 +62,15 @@ export interface AiInsightRow {
   performance_risk: string;
   rationale: string;
   implementation: string;
+  evidence_runs?: string[];
 }
 export interface AiInsightsBlock {
   summary: string;
   insights: AiInsightRow[];
   model: string;
+  provider?: string;
   generatedAt: string;
+  runsAnalyzed?: number;
 }
 
 export function renderDashboardHtml(
@@ -80,7 +83,7 @@ export function renderDashboardHtml(
 ): string {
   const k = encodeURIComponent(key);
   const insightsHtml = aiInsights
-    ? `<h2>AI cost analysis <span style="font-weight:400;color:#66666e;font-size:12px">(${esc(aiInsights.model)} · ${esc(aiInsights.generatedAt)})</span></h2>
+    ? `<h2>AI cost analysis <span style="font-weight:400;color:#66666e;font-size:12px">(${esc(aiInsights.provider ?? '')} ${esc(aiInsights.model)} · ${aiInsights.runsAnalyzed ?? '?'} runs analyzed · ${esc(aiInsights.generatedAt)})</span></h2>
 <p style="font-size:14px">${esc(aiInsights.summary)}</p>
 ${aiInsights.insights
   .map(
@@ -92,6 +95,7 @@ ${aiInsights.insights
   <div style="font-size:12px;color:#66666e;margin:2px 0 6px">${esc(i.category)} · performance risk: <b>${esc(i.performance_risk)}</b></div>
   <div style="font-size:13px">${esc(i.rationale)}</div>
   <div style="font-size:13px;color:#3c3c44;margin-top:6px"><b>Do:</b> ${esc(i.implementation)}</div>
+  ${(i.evidence_runs ?? []).length ? `<div style="font-size:12px;color:#66666e;margin-top:6px">evidence: ${(i.evidence_runs ?? []).slice(0, 6).map((r) => `<a href="/g/${esc(r)}?key=${k}"><code>${esc(r.slice(0, 8))}…</code></a>`).join(' ')}</div>` : ''}
 </div>`,
   )
   .join('')}`

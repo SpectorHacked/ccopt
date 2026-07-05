@@ -14,7 +14,8 @@ import { runPipeline } from './pipeline.js';
 import { OutboxEmailSender } from './email.js';
 import { renderClusterHtml, renderDashboardHtml, renderGraphHtml, renderSessionHtml } from './views.js';
 import { sanitizeForJsonb } from './jsonb.js';
-import { buildInsightsPacket, generateInsights } from './insights.js';
+import { buildInsightsPacket, buildRunDigest, generateInsights } from './insights.js';
+import { createLlmProvider } from './llm.js';
 
 const config = loadConfig();
 const db: Db = createPool(config.databaseUrl);
@@ -163,6 +164,9 @@ app.post('/api/v1/analyze', async (req, reply) => {
 app.post('/api/v1/insights', async (req, reply) => {
   const auth = await authenticateFlexible(req);
   if (!auth) return reply.code(401).send({ error: 'invalid API key' });
+  const agentFilter = (req.query as { agent?: string })?.agent;
+  const maxRuns = Math.min(80, Number((req.query as { runs?: string })?.runs ?? 40) || 40);
+
   const { rows } = await db.query<{ id: string; report_json: WasteReport }>(
     `select id, report_json from reports where tenant_id = $1 order by generated_at desc limit 1`,
     [auth.tenantId],
@@ -175,6 +179,40 @@ app.post('/api/v1/insights', async (req, reply) => {
      from clusters where report_id = $1 order by total_cost_usd desc limit 12`,
     [rows[0].id],
   );
+
+  // The insights agent goes over the runs themselves — full fidelity from the
+  // blob store, most expensive first (that's where the money is), capped so
+  // the packet fits one context. The cap is reported to the model honestly.
+  const runRows = await db.query<{ session_id: string; agent_id: string; blob_path: string; parsed: Run }>(
+    agentFilter
+      ? `select session_id, agent_id, blob_path, parsed from runs
+         where tenant_id = $1 and agent_id ilike '%' || $2 || '%'
+         order by cost_usd desc limit ` + String(maxRuns)
+      : `select session_id, agent_id, blob_path, parsed from runs
+         where tenant_id = $1 order by cost_usd desc limit ` + String(maxRuns),
+    agentFilter ? [auth.tenantId, agentFilter] : [auth.tenantId],
+  );
+  const totalCount = await db.query<{ n: string }>(
+    agentFilter
+      ? `select count(*) as n from runs where tenant_id = $1 and agent_id ilike '%' || $2 || '%'`
+      : `select count(*) as n from runs where tenant_id = $1`,
+    agentFilter ? [auth.tenantId, agentFilter] : [auth.tenantId],
+  );
+
+  const digests = [];
+  for (const r of runRows.rows) {
+    let run: Run | null = null;
+    try {
+      run = parseTranscript(gunzipSync(await blobs.get(r.blob_path)).toString('utf8'), {
+        agentId: r.agent_id,
+      });
+    } catch {
+      run = r.parsed; // blob unavailable — the trimmed DB copy still carries the signals
+    }
+    if (run) digests.push(buildRunDigest(run, config.publicBaseUrl));
+  }
+  if (digests.length === 0) return reply.code(404).send({ error: 'no runs to analyze' });
+
   const packet = buildInsightsPacket(
     report,
     clusterRows.rows.map((c) => ({
@@ -195,10 +233,13 @@ app.post('/api/v1/insights', async (req, reply) => {
         volatileSlots: (c.metrics?.volatileSlots ?? []).slice(0, 8),
       },
     })),
+    digests,
+    Number(totalCount.rows[0].n),
   );
 
   try {
-    const insights = await generateInsights(packet);
+    const llm = createLlmProvider(process.env);
+    const insights = await generateInsights(llm, packet);
     await db.query(
       `update reports set report_json = jsonb_set(report_json, '{aiInsights}', $2::jsonb) where id = $1`,
       [rows[0].id, JSON.stringify(sanitizeForJsonb(insights))],
@@ -209,7 +250,7 @@ app.post('/api/v1/insights', async (req, reply) => {
     req.log.error({ err }, 'insights generation failed');
     return reply.code(502).send({
       error: `AI analysis failed: ${msg}`,
-      hint: 'Is ANTHROPIC_API_KEY set in the server environment?',
+      hint: 'Configure the LLM provider env: ANTHROPIC_API_KEY (default), or CCOPT_LLM_PROVIDER=openai-compatible with CCOPT_LLM_BASE_URL/CCOPT_LLM_MODEL/CCOPT_LLM_API_KEY.',
     });
   }
 });

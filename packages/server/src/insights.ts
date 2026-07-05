@@ -1,15 +1,144 @@
 /**
- * AI insights — an LLM reviews the deterministic engine's output (clusters,
- * graphs, findings, cost data) and reasons about *semantic* cost reductions the
- * rule engine can't see: refetching static content, prompts that defeat the
- * cache, retries rooted in a missing flag, steps a cheaper model could own.
+ * The insights agent — an LLM goes over ALL runs of a tenant's agent (not just
+ * cluster statistics) and produces actionable bullets on how to make the agent
+ * cost less WITHOUT hurting performance.
  *
- * The engine finds structure; Claude judges meaning. Output is structured JSON
- * (schema-enforced) so it renders in the dashboard and is diffable over time.
+ * Per run it sees a digest built from the canonical graph: which tools ran,
+ * which files/folders/repos were read, which domains were web-fetched, which
+ * commands were executed, prompt sizes, token/cache economics, dataflow and
+ * error structure. Every digest links to that run's graph (/g/:sessionId).
+ *
+ * The engine's clusters (determinism scores, volatile slots) ride along as the
+ * safety data: deterministic segments are where scripts/smaller models are safe.
+ *
+ * Provider-agnostic: uses the LlmProvider abstraction (Anthropic by default,
+ * any OpenAI-compatible endpoint via env). See llm.ts.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import type { ClusterSummary, Finding, WasteReport } from '@ccopt/core';
+import { buildRunGraph, type Run, type WasteReport } from '@ccopt/core';
+import type { LlmProvider } from './llm.js';
+
+// ─── Per-run digest ───────────────────────────────────────────────────────────
+
+export interface RunDigest {
+  sessionId: string;
+  graphUrl: string;
+  agentId: string;
+  costUsd: number;
+  models: string[];
+  nSteps: number;
+  dataflowEdges: number;
+  errorSteps: number;
+  tokenUsage: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  cacheReadRatio: number;
+  toolCounts: Record<string, number>;
+  /** Semantic signals: what the agent actually spent its steps on. */
+  signals: {
+    filesRead: string[];
+    foldersListed: string[];
+    webFetched: string[];
+    webSearches: string[];
+    bashCommands: string[];
+    repoOperations: string[];
+  };
+  firstPrompt?: string;
+  /** Canonical step sequence (truncated) — the run's procedure skeleton. */
+  stepSequence: string[];
+}
+
+function push(list: string[], value: string, max = 12): void {
+  if (value && !list.includes(value) && list.length < max) list.push(value);
+}
+
+export function buildRunDigest(run: Run, publicBaseUrl: string): RunDigest {
+  const graph = buildRunGraph(run);
+  const toolCounts: Record<string, number> = {};
+  const signals: RunDigest['signals'] = {
+    filesRead: [],
+    foldersListed: [],
+    webFetched: [],
+    webSearches: [],
+    bashCommands: [],
+    repoOperations: [],
+  };
+
+  for (const step of run.steps) {
+    if (step.kind !== 'tool_use') continue;
+    toolCounts[step.name] = (toolCounts[step.name] ?? 0) + 1;
+    let input: Record<string, unknown> = {};
+    try {
+      input = JSON.parse(step.payload) as Record<string, unknown>;
+    } catch {
+      /* non-JSON input */
+    }
+    const str = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : '');
+    switch (step.name) {
+      case 'Read':
+      case 'read':
+        push(signals.filesRead, str('file_path') || str('path'));
+        break;
+      case 'Glob':
+      case 'glob':
+      case 'LS':
+        push(signals.foldersListed, str('path') || str('pattern'));
+        break;
+      case 'WebFetch':
+      case 'web_fetch':
+        push(signals.webFetched, str('url'));
+        break;
+      case 'WebSearch':
+      case 'web_search':
+        push(signals.webSearches, str('query'));
+        break;
+      case 'Bash':
+      case 'bash': {
+        const cmd = str('command');
+        push(signals.bashCommands, cmd.slice(0, 100));
+        if (/\bgit\b|gh |clone|checkout|\bgrep -r|rg /.test(cmd)) {
+          push(signals.repoOperations, cmd.slice(0, 100));
+        }
+        break;
+      }
+      case 'Grep':
+      case 'grep':
+        push(signals.repoOperations, `grep: ${str('pattern')}`.slice(0, 100));
+        break;
+    }
+  }
+
+  const usage = Object.values(run.usageByModel).reduce(
+    (acc, u) => ({
+      input: acc.input + u.inputTokens,
+      output: acc.output + u.outputTokens,
+      cacheRead: acc.cacheRead + u.cacheReadInputTokens,
+      cacheWrite: acc.cacheWrite + u.cacheCreationInputTokens,
+    }),
+    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  );
+  const allInput = usage.input + usage.cacheRead + usage.cacheWrite;
+
+  return {
+    sessionId: run.runId,
+    graphUrl: `${publicBaseUrl}/g/${run.runId}`,
+    agentId: run.agentId,
+    costUsd: Math.round(run.costUsd * 100) / 100,
+    models: run.models,
+    nSteps: run.steps.length,
+    dataflowEdges: graph.edges.filter((e) => e.type === 'dataflow').length,
+    errorSteps: graph.nodes.filter((n) => n.isError).length,
+    tokenUsage: usage,
+    cacheReadRatio: allInput === 0 ? 0 : Math.round((usage.cacheRead / allInput) * 100) / 100,
+    toolCounts,
+    signals,
+    firstPrompt: run.firstPrompt?.slice(0, 300),
+    stepSequence:
+      graph.labelSequence.length > 40
+        ? [...graph.labelSequence.slice(0, 40).map((l) => l.slice(0, 90)), `… ${graph.labelSequence.length - 40} more`]
+        : graph.labelSequence.map((l) => l.slice(0, 90)),
+  };
+}
+
+// ─── Analysis packet ──────────────────────────────────────────────────────────
 
 export interface InsightsPacketCluster {
   clusterId: string;
@@ -22,114 +151,38 @@ export interface InsightsPacketCluster {
   metrics: Record<string, unknown>;
 }
 
-export interface Insight {
-  title: string;
-  category:
-    | 'prompt-caching'
-    | 'model-rightsizing'
-    | 'result-caching'
-    | 'compile-procedure'
-    | 'fix-failures'
-    | 'precompute-context'
-    | 'prompt-engineering'
-    | 'other';
-  est_monthly_saving_usd: number;
-  performance_risk: 'none' | 'low' | 'medium' | 'high';
-  rationale: string;
-  implementation: string;
-  evidence: string;
-}
-
-export interface InsightsResult {
-  summary: string;
-  insights: Insight[];
-  model: string;
-  generatedAt: string;
-}
-
-const INSIGHTS_SCHEMA = {
-  type: 'object' as const,
-  additionalProperties: false,
-  required: ['summary', 'insights'],
-  properties: {
-    summary: {
-      type: 'string',
-      description: 'Two-to-four sentence executive summary of where this agent wastes money and the single highest-leverage change.',
-    },
-    insights: {
-      type: 'array',
-      items: {
-        type: 'object' as const,
-        additionalProperties: false,
-        required: [
-          'title',
-          'category',
-          'est_monthly_saving_usd',
-          'performance_risk',
-          'rationale',
-          'implementation',
-          'evidence',
-        ],
-        properties: {
-          title: { type: 'string' },
-          category: {
-            type: 'string',
-            enum: [
-              'prompt-caching',
-              'model-rightsizing',
-              'result-caching',
-              'compile-procedure',
-              'fix-failures',
-              'precompute-context',
-              'prompt-engineering',
-              'other',
-            ],
-          },
-          est_monthly_saving_usd: { type: 'number' },
-          performance_risk: { type: 'string', enum: ['none', 'low', 'medium', 'high'] },
-          rationale: { type: 'string' },
-          implementation: { type: 'string' },
-          evidence: { type: 'string', description: 'Which clusters/steps/metrics in the packet support this.' },
-        },
-      },
-    },
-  },
-};
-
-const SYSTEM_PROMPT = `You are ccopt's cost-optimization analyst. You review telemetry from AI agents built on Claude (canonical run graphs, procedure clusters, token/cost metrics) and identify how to reduce the agent's spend WITHOUT hurting its task performance.
-
-Ground rules:
-- Only propose changes justified by the data given. Cite the specific clusters, steps, or metrics (the "evidence" field).
-- Quantify honestly: derive savings from the cluster costs and run counts provided; when extrapolating, say so in the rationale. Never invent spend that isn't in the packet.
-- Performance risk is as important as savings. "none" = mathematically equivalent output (e.g. serving a cached identical result); "high" = could change agent behavior (e.g. swapping models on a low-determinism procedure). Deterministic procedures (determinism ≥ 0.9) are safe to compile/cache; low-determinism ones are not.
-- Claude-specific levers you may reason about: prompt caching (cache reads cost ~10% of fresh input; cache-read ratios below ~50% signal prefix churn), model right-sizing (Haiku ≈ 5-6x cheaper than Sonnet, Sonnet ≈ 5x cheaper than Opus per token), batch API (50% off for non-latency-sensitive work), shorter/stable system prompts, fewer retries via guards, precomputing shared exploration context (e.g. CLAUDE.md), compiling deterministic tool sequences into plain scripts that skip the LLM entirely.
-- Order insights by est_monthly_saving_usd descending. 3-7 insights. If the data is too thin for a recommendation (few runs, one cluster), say so in the summary and only propose what the data supports.`;
-
 export interface InsightsPacket {
   windowDays: number;
   totals: WasteReport['totals'];
   agents: string[];
+  runsAnalyzed: number;
+  runsTotal: number;
+  runs: RunDigest[];
   clusters: InsightsPacketCluster[];
-  engineFindings: Pick<Finding, 'kind' | 'title' | 'estMonthlySavingUsd' | 'recommendation'>[];
+  engineFindings: { kind: string; title: string; estMonthlySavingUsd: number; recommendation: string }[];
 }
 
 export function buildInsightsPacket(
   report: WasteReport,
   clusters: InsightsPacketCluster[],
+  digests: RunDigest[],
+  runsTotal: number,
 ): InsightsPacket {
   return {
     windowDays: report.windowDays,
     totals: report.totals,
     agents: report.agentIds,
-    // biggest spenders first, bounded so the packet stays compact
+    runsAnalyzed: digests.length,
+    runsTotal,
+    runs: digests,
     clusters: clusters
       .sort((a, b) => b.totalCostUsd - a.totalCostUsd)
       .slice(0, 12)
       .map((c) => ({
         ...c,
         labelSequence:
-          c.labelSequence.length > 60
-            ? [...c.labelSequence.slice(0, 60), `… ${c.labelSequence.length - 60} more steps`]
+          c.labelSequence.length > 40
+            ? [...c.labelSequence.slice(0, 40), `… ${c.labelSequence.length - 40} more steps`]
             : c.labelSequence,
       })),
     engineFindings: report.findings.map((f) => ({
@@ -141,41 +194,133 @@ export function buildInsightsPacket(
   };
 }
 
-export async function generateInsights(packet: InsightsPacket): Promise<InsightsResult> {
-  const client = new Anthropic();
-  const response = await client.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 16000,
-    thinking: { type: 'adaptive' },
-    system: SYSTEM_PROMPT,
-    output_config: { format: { type: 'json_schema', schema: INSIGHTS_SCHEMA } },
-    messages: [
-      {
-        role: 'user',
-        content:
-          `Analyze this agent telemetry and produce cost-reduction insights that do not hurt agent performance.\n\n` +
-          '```json\n' +
-          JSON.stringify(packet) +
-          '\n```',
-      },
-    ],
-  });
+// ─── LLM analysis ─────────────────────────────────────────────────────────────
 
-  if (response.stop_reason === 'refusal') {
-    throw new Error('analysis was refused by the model');
-  }
-  const text = response.content.find(
-    (b): b is Anthropic.TextBlock => b.type === 'text',
-  )?.text;
-  if (!text) throw new Error('model returned no analysis text');
-  const parsed = JSON.parse(text) as { summary: string; insights: Insight[] };
+export interface Insight {
+  title: string;
+  category:
+    | 'prompt-reduction'
+    | 'prompt-caching'
+    | 'result-caching'
+    | 'knowledge-summary'
+    | 'model-rightsizing'
+    | 'deterministic-to-script'
+    | 'fix-failures'
+    | 'precompute-context'
+    | 'other';
+  est_monthly_saving_usd: number;
+  performance_risk: 'none' | 'low' | 'medium' | 'high';
+  rationale: string;
+  implementation: string;
+  evidence_runs: string[];
+}
+
+export interface InsightsResult {
+  summary: string;
+  insights: Insight[];
+  provider: string;
+  model: string;
+  generatedAt: string;
+  runsAnalyzed: number;
+}
+
+// Schema is dual-compatible: Anthropic structured outputs and OpenAI strict
+// json_schema both require additionalProperties:false and full `required`.
+const INSIGHTS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['summary', 'insights'],
+  properties: {
+    summary: {
+      type: 'string',
+      description: 'Executive summary: where this agent wastes money and the single highest-leverage change.',
+    },
+    insights: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'title',
+          'category',
+          'est_monthly_saving_usd',
+          'performance_risk',
+          'rationale',
+          'implementation',
+          'evidence_runs',
+        ],
+        properties: {
+          title: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: [
+              'prompt-reduction',
+              'prompt-caching',
+              'result-caching',
+              'knowledge-summary',
+              'model-rightsizing',
+              'deterministic-to-script',
+              'fix-failures',
+              'precompute-context',
+              'other',
+            ],
+          },
+          est_monthly_saving_usd: { type: 'number' },
+          performance_risk: { type: 'string', enum: ['none', 'low', 'medium', 'high'] },
+          rationale: { type: 'string' },
+          implementation: {
+            type: 'string',
+            description: 'Concrete steps the agent owner applies — specific to the tools/files/domains in the evidence.',
+          },
+          evidence_runs: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'sessionIds from the packet that demonstrate this waste.',
+          },
+        },
+      },
+    },
+  },
+};
+
+const SYSTEM_PROMPT = `You are ccopt's cost-optimization agent. You are given telemetry for ONE tenant's AI agent: a digest of every analyzed run (tool calls, files read, folders listed, web fetches/searches, bash commands, prompt sizes, token/cache economics, canonical step sequence, error/dataflow structure) plus procedure clusters with determinism scores from a deterministic graph engine.
+
+Your job: produce concrete bullets on how to make this agent cost less WITHOUT hurting its task performance.
+
+What to look for (use the run content, not just aggregates):
+- REPEATED LOOKUPS: the same files, folders, repos, or web domains read across many runs → precompute a summary/context artifact (e.g. a knowledge file or CLAUDE.md section) and stop re-discovering. Repeated web searches on stable topics → replace with a cached summary refreshed on a schedule.
+- PROMPT WASTE: large first prompts repeated across runs with small variations → shrink the prompt; move the stable part to a cached prefix (prompt cache reads cost ~10% of fresh input). Low cacheReadRatio (<0.5) = the prefix churns; stabilize it.
+- DETERMINISTIC SEGMENTS: clusters or step sub-sequences with determinism ≥ 0.9 → compile to a plain script (no LLM at all), or route just that segment to a much smaller model (Haiku ≈ 5-6x cheaper than Sonnet; Sonnet ≈ 5x cheaper than Opus). Low-determinism work must stay on the capable model — flag risk honestly.
+- IDENTICAL RE-RUNS: equal inputs re-executed → serve a cached result (risk: none).
+- FAILURE TAX: error steps and retry motifs → root-cause once, add a guard; non-final attempts are pure re-payment.
+- BATCHABLE WORK: runs that are not latency-sensitive → 50% off via batch processing.
+
+Rules:
+- Every insight cites evidence_runs (sessionIds from the packet) — the reader opens each run's graph to verify.
+- Derive est_monthly_saving_usd from the actual costs in the packet (extrapolate by windowDays and say so in the rationale). Never invent spend.
+- performance_risk is as important as savings: "none" = mathematically identical output; "high" = could change behavior. Be conservative.
+- implementation must be specific to THIS agent's tools/files/domains — name them.
+- Order by est_monthly_saving_usd descending. 3-10 insights. If runsAnalyzed < runsTotal, note the sampling in the summary. If the data is too thin, say so and only propose what it supports.`;
+
+export async function generateInsights(
+  llm: LlmProvider,
+  packet: InsightsPacket,
+): Promise<InsightsResult> {
+  const parsed = (await llm.generateJson({
+    system: SYSTEM_PROMPT,
+    prompt:
+      'Analyze this agent telemetry and produce the cost-reduction bullets.\n\n```json\n' +
+      JSON.stringify(packet) +
+      '\n```',
+    schema: INSIGHTS_SCHEMA,
+  })) as { summary: string; insights: Insight[] };
 
   return {
     summary: parsed.summary,
     insights: parsed.insights,
-    model: response.model,
+    provider: llm.name,
+    model: llm.model,
     generatedAt: new Date().toISOString(),
+    runsAnalyzed: packet.runsAnalyzed,
   };
 }
-
-export type { ClusterSummary };
