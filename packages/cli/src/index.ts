@@ -10,7 +10,7 @@
 import { Command } from 'commander';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { analyzeRuns, renderReportHtml } from '@ccopt/core';
@@ -21,8 +21,12 @@ import {
   defaultSources,
   discoverSessions,
   loadAgentMap,
+  loadConfig,
   loadRuns,
+  resolveAgentId,
+  saveConfig,
   tagSessions,
+  CONFIG_PATH,
 } from './store.js';
 import { uploadSessionFile } from './upload.js';
 
@@ -67,26 +71,63 @@ program
   });
 
 program
-  .command('sync')
-  .description('Upload local session transcripts to the ccopt service')
+  .command('login')
+  .description('Persist the ccopt server + API key (used as defaults by sync/run/doctor)')
   .requiredOption('--server <url>', 'ccopt server base URL')
   .requiredOption('--key <apiKey>', 'tenant API key')
+  .action(async (opts) => {
+    const config = loadConfig();
+    config.server = opts.server;
+    config.apiKey = opts.key;
+    saveConfig(config);
+    try {
+      const res = await fetch(`${opts.server.replace(/\/$/, '')}/api/v1/reports`, {
+        headers: { authorization: `Bearer ${opts.key}` },
+      });
+      console.log(
+        res.ok
+          ? `Saved to ${CONFIG_PATH} — key verified against ${opts.server}.`
+          : `Saved to ${CONFIG_PATH}, but the key was rejected (HTTP ${res.status}) — check it.`,
+      );
+    } catch {
+      console.log(`Saved to ${CONFIG_PATH} — server unreachable right now, will be used anyway.`);
+    }
+  });
+
+program
+  .command('sync')
+  .description('Upload local session transcripts to the ccopt service')
+  .option('--server <url>', 'ccopt server base URL (default: ccopt login config)')
+  .option('--key <apiKey>', 'tenant API key (default: ccopt login config)')
   .option('--source <dir...>', 'transcript directories', defaultSources())
   .option('--days <n>', 'only sync sessions modified in the last N days', '30')
+  .option('--agent <substr>', 'only sync sessions whose resolved agentId contains this substring')
   .action(async (opts) => {
-    const agentMap = loadAgentMap();
+    const config = loadConfig();
+    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
+    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+    if (!server || !apiKey) {
+      console.error('No server/key: pass --server/--key, set CCOPT_SERVER/CCOPT_API_KEY, or run `ccopt login`.');
+      process.exitCode = 2;
+      return;
+    }
     const cutoff = Date.now() - Number(opts.days) * 86_400_000;
     const sourceDirs: string[] = Array.isArray(opts.source) ? opts.source : [opts.source];
     const seen = new Set<string>();
     const sessions = sourceDirs
       .flatMap((d: string) => discoverSessions(resolve(d)))
       .filter((s) => s.mtimeMs >= cutoff)
-      .filter((s) => (seen.has(s.sessionId) ? false : (seen.add(s.sessionId), true)));
+      .filter((s) => (seen.has(s.sessionId) ? false : (seen.add(s.sessionId), true)))
+      .map((s) => ({ ...s, agentId: resolveAgentId(s.sessionId, s.path) }))
+      .filter((s) => !opts.agent || (s.agentId ?? '').includes(opts.agent));
     if (sessions.length === 0) {
       console.error('Nothing to sync.');
       return;
     }
-    const statePath = `${CCOPT_HOME}/sync-state.json`;
+    // State is per server+key: the same session must upload once per tenant,
+    // not once globally (switching tenants must not silently skip history).
+    const target = createHash('sha256').update(`${server}|${apiKey}`).digest('hex').slice(0, 12);
+    const statePath = `${CCOPT_HOME}/sync-state-${target}.json`;
     let state: Record<string, number> = {};
     try {
       state = JSON.parse(readFileSync(statePath, 'utf8'));
@@ -101,10 +142,10 @@ program
         continue;
       }
       const r = await uploadSessionFile(
-        { server: opts.server, apiKey: opts.key },
+        { server, apiKey },
         s.path,
         s.sessionId,
-        agentMap[s.sessionId],
+        s.agentId,
       );
       if (!r.ok) {
         console.error(`  ✗ ${s.sessionId}: HTTP ${r.status} ${r.detail ?? ''}`);
@@ -171,8 +212,9 @@ program
           'non-isolated capture works regardless',
       );
 
-    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER;
-    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY;
+    const config = loadConfig();
+    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
+    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
     if (server) {
       try {
         const health = await fetch(`${server.replace(/\/$/, '')}/healthz`);
@@ -227,8 +269,9 @@ program
   .argument('<cmd...>', 'command to execute, e.g. -- claude -p "…" or -- node my-agent.js')
   .action(async (cmd: string[], opts) => {
     const argv = [...cmd];
-    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER;
-    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY;
+    const config = loadConfig();
+    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
+    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
     if (server && !apiKey) {
       console.error('[ccopt] --server requires --key (or CCOPT_API_KEY)');
       process.exitCode = 2;

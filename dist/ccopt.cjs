@@ -4115,6 +4115,51 @@ function defaultSources() {
   return [defaultSource(), CCOPT_STORE];
 }
 var AGENT_TAGS_DIR = (0, import_node_path.join)(CCOPT_HOME, "agent-map.d");
+var CONFIG_PATH = (0, import_node_path.join)(CCOPT_HOME, "config.json");
+function loadConfig() {
+  try {
+    const parsed = JSON.parse((0, import_node_fs.readFileSync)(CONFIG_PATH, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function saveConfig(config) {
+  (0, import_node_fs.mkdirSync)(CCOPT_HOME, { recursive: true });
+  (0, import_node_fs.writeFileSync)(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+function agentFromRules(cwd, rules) {
+  if (!cwd || !rules) return void 0;
+  for (const rule of rules) {
+    try {
+      if (new RegExp(rule.pattern).test(cwd)) return rule.agent;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function sniffCwd(path, maxBytes = 65536) {
+  let head;
+  try {
+    const fd = (0, import_node_fs.openSync)(path, "r");
+    const buf = Buffer.alloc(maxBytes);
+    const n = (0, import_node_fs.readSync)(fd, buf, 0, maxBytes, 0);
+    (0, import_node_fs.closeSync)(fd);
+    head = buf.subarray(0, n).toString("utf8");
+  } catch {
+    return void 0;
+  }
+  for (const line of head.split("\n")) {
+    const m = line.match(/"cwd":"([^"]+)"/);
+    if (m) return m[1];
+  }
+  return void 0;
+}
+function resolveAgentId(sessionId, path) {
+  const map = loadAgentMap();
+  if (map[sessionId]) return map[sessionId];
+  return agentFromRules(sniffCwd(path), loadConfig().agentRules);
+}
 function loadAgentMap() {
   const map = {};
   try {
@@ -4161,6 +4206,7 @@ function discoverSessions(sourceDir) {
 function loadRuns(sourceDirs, options = {}) {
   const dirs = Array.isArray(sourceDirs) ? sourceDirs : [sourceDirs];
   const agentMap = loadAgentMap();
+  const config = loadConfig();
   const cutoff = options.sinceDays !== void 0 ? Date.now() - options.sinceDays * 864e5 : void 0;
   const runs = [];
   const seenSessions = /* @__PURE__ */ new Set();
@@ -4174,7 +4220,9 @@ function loadRuns(sourceDirs, options = {}) {
     } catch {
       continue;
     }
-    const run = parseTranscript(jsonl, { agentId: agentMap[session.sessionId] });
+    const run = parseTranscript(jsonl, {
+      agentId: agentMap[session.sessionId] ?? agentFromRules(sniffCwd(session.path), config.agentRules)
+    });
     if (!run) continue;
     if (options.minSteps !== void 0 && run.steps.length < options.minSteps) continue;
     if (options.agentFilter && !run.agentId.includes(options.agentFilter)) continue;
@@ -4234,17 +4282,41 @@ program2.command("analyze").description("Analyze local Claude Code transcripts a
   }
   console.log(`Report: ${(0, import_node_path2.resolve)(opts.out)}`);
 });
-program2.command("sync").description("Upload local session transcripts to the ccopt service").requiredOption("--server <url>", "ccopt server base URL").requiredOption("--key <apiKey>", "tenant API key").option("--source <dir...>", "transcript directories", defaultSources()).option("--days <n>", "only sync sessions modified in the last N days", "30").action(async (opts) => {
-  const agentMap = loadAgentMap();
+program2.command("login").description("Persist the ccopt server + API key (used as defaults by sync/run/doctor)").requiredOption("--server <url>", "ccopt server base URL").requiredOption("--key <apiKey>", "tenant API key").action(async (opts) => {
+  const config = loadConfig();
+  config.server = opts.server;
+  config.apiKey = opts.key;
+  saveConfig(config);
+  try {
+    const res = await fetch(`${opts.server.replace(/\/$/, "")}/api/v1/reports`, {
+      headers: { authorization: `Bearer ${opts.key}` }
+    });
+    console.log(
+      res.ok ? `Saved to ${CONFIG_PATH} \u2014 key verified against ${opts.server}.` : `Saved to ${CONFIG_PATH}, but the key was rejected (HTTP ${res.status}) \u2014 check it.`
+    );
+  } catch {
+    console.log(`Saved to ${CONFIG_PATH} \u2014 server unreachable right now, will be used anyway.`);
+  }
+});
+program2.command("sync").description("Upload local session transcripts to the ccopt service").option("--server <url>", "ccopt server base URL (default: ccopt login config)").option("--key <apiKey>", "tenant API key (default: ccopt login config)").option("--source <dir...>", "transcript directories", defaultSources()).option("--days <n>", "only sync sessions modified in the last N days", "30").option("--agent <substr>", "only sync sessions whose resolved agentId contains this substring").action(async (opts) => {
+  const config = loadConfig();
+  const server = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
+  const apiKey = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+  if (!server || !apiKey) {
+    console.error("No server/key: pass --server/--key, set CCOPT_SERVER/CCOPT_API_KEY, or run `ccopt login`.");
+    process.exitCode = 2;
+    return;
+  }
   const cutoff = Date.now() - Number(opts.days) * 864e5;
   const sourceDirs = Array.isArray(opts.source) ? opts.source : [opts.source];
   const seen = /* @__PURE__ */ new Set();
-  const sessions = sourceDirs.flatMap((d) => discoverSessions((0, import_node_path2.resolve)(d))).filter((s) => s.mtimeMs >= cutoff).filter((s) => seen.has(s.sessionId) ? false : (seen.add(s.sessionId), true));
+  const sessions = sourceDirs.flatMap((d) => discoverSessions((0, import_node_path2.resolve)(d))).filter((s) => s.mtimeMs >= cutoff).filter((s) => seen.has(s.sessionId) ? false : (seen.add(s.sessionId), true)).map((s) => ({ ...s, agentId: resolveAgentId(s.sessionId, s.path) })).filter((s) => !opts.agent || (s.agentId ?? "").includes(opts.agent));
   if (sessions.length === 0) {
     console.error("Nothing to sync.");
     return;
   }
-  const statePath = `${CCOPT_HOME}/sync-state.json`;
+  const target = (0, import_node_crypto3.createHash)("sha256").update(`${server}|${apiKey}`).digest("hex").slice(0, 12);
+  const statePath = `${CCOPT_HOME}/sync-state-${target}.json`;
   let state = {};
   try {
     state = JSON.parse((0, import_node_fs3.readFileSync)(statePath, "utf8"));
@@ -4258,10 +4330,10 @@ program2.command("sync").description("Upload local session transcripts to the cc
       continue;
     }
     const r = await uploadSessionFile(
-      { server: opts.server, apiKey: opts.key },
+      { server, apiKey },
       s.path,
       s.sessionId,
-      agentMap[s.sessionId]
+      s.agentId
     );
     if (!r.ok) {
       console.error(`  \u2717 ${s.sessionId}: HTTP ${r.status} ${r.detail ?? ""}`);
@@ -4307,8 +4379,9 @@ program2.command("doctor").description("Check that ccopt can capture, attribute,
     warn(
       "no env-based auth detected \u2014 `ccopt run --isolated` needs ANTHROPIC_API_KEY (or Bedrock/Vertex); non-isolated capture works regardless"
     );
-  const server = opts.server ?? process.env.CCOPT_SERVER;
-  const apiKey = opts.key ?? process.env.CCOPT_API_KEY;
+  const config = loadConfig();
+  const server = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
+  const apiKey = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
   if (server) {
     try {
       const health = await fetch(`${server.replace(/\/$/, "")}/healthz`);
@@ -4342,8 +4415,9 @@ program2.command("run").description(
   "run with a private CLAUDE_CONFIG_DIR: exact attribution, safe for concurrent agents. Requires env-based auth (ANTHROPIC_API_KEY / Bedrock / Vertex) or file-based credentials; macOS keychain logins do not carry over."
 ).option("--server <url>", "ccopt server to upload captured sessions to (env CCOPT_SERVER)").option("--key <apiKey>", "tenant API key for --server (env CCOPT_API_KEY)").allowUnknownOption(true).argument("<cmd...>", 'command to execute, e.g. -- claude -p "\u2026" or -- node my-agent.js').action(async (cmd, opts) => {
   const argv = [...cmd];
-  const server = opts.server ?? process.env.CCOPT_SERVER;
-  const apiKey = opts.key ?? process.env.CCOPT_API_KEY;
+  const config = loadConfig();
+  const server = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
+  const apiKey = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
   if (server && !apiKey) {
     console.error("[ccopt] --server requires --key (or CCOPT_API_KEY)");
     process.exitCode = 2;
