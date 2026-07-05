@@ -96,6 +96,25 @@ curl -X POST localhost:8787/api/v1/analyze -H 'authorization: Bearer cck_…'
 
 Server env: `DATABASE_URL`, `CCOPT_ADMIN_TOKEN` (required), `CCOPT_DATA_DIR` (blob root, default `./data`), `PORT` (8787), `CCOPT_PUBLIC_BASE_URL`, `CCOPT_DISABLE_JOBS=1` (tests). Analysis re-runs nightly in-process; the weekly report email is written to `<dataDir>/outbox/` (transport stub — wire SES/Resend behind `EmailSender` when design partners exist).
 
+### Production storage & free-tier deployment
+
+Raw transcripts and report HTML go to the **blob store**; Postgres keeps metadata, parsed runs, clusters, and findings (pointers only to blobs). Two blob backends behind one interface, chosen by env:
+
+- **Disk** (default): `CCOPT_DATA_DIR` — dev and single-box installs.
+- **S3-compatible** (set `CCOPT_S3_BUCKET` + `CCOPT_S3_ENDPOINT` + `CCOPT_S3_ACCESS_KEY_ID` + `CCOPT_S3_SECRET_ACCESS_KEY` [+ `CCOPT_S3_REGION`, default `auto`]): works with Cloudflare R2, Backblaze B2, AWS S3, and MinIO (integration-verified against MinIO).
+
+Recommended $0 pilot stack:
+
+| Piece | Service | Free tier |
+|---|---|---|
+| Server | Render free web service (`render.yaml` blueprint, Docker) | sleeps when idle, wakes on request |
+| Postgres | Neon | 0.5 GB, scales to zero, no expiry |
+| Blobs | Cloudflare R2 | 10 GB + zero egress fees |
+
+Deploy: create the Neon DB and R2 bucket (+ API token), push this repo, point Render at it (`render.yaml`), paste `DATABASE_URL` (with `?sslmode=require`) and the `CCOPT_S3_*` values, set `CCOPT_PUBLIC_BASE_URL` to the Render URL. Migrations run automatically on boot. Then `ccopt login --server https://<app>.onrender.com --key …` and every `ccopt invite` from that point embeds the stable public URL.
+
+Capacity math: transcripts gzip ~10:1, so 10 GB of R2 ≈ hundreds of thousands of agent runs; Neon's 0.5 GB holds the trimmed parsed runs for a multi-partner pilot. The first paying customer funds the jump to paid tiers long before either limit.
+
 ### Capturing any agent — standalone, zero changes to the target
 
 ccopt never requires code changes in the agent it observes. Anything built on Claude Code or the Claude Agent SDK already writes complete session transcripts to `~/.claude/projects/`; ccopt attributes them three ways:

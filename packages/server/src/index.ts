@@ -9,14 +9,14 @@ import { gunzipSync } from 'node:zlib';
 import { parseTranscript, type Run } from '@ccopt/core';
 import { loadConfig } from './config.js';
 import { createPool, migrate, type Db } from './db.js';
-import { DiskBlobStore } from './blobs.js';
+import { createBlobStore } from './blobs.js';
 import { runPipeline } from './pipeline.js';
 import { OutboxEmailSender } from './email.js';
 import { sanitizeForJsonb } from './jsonb.js';
 
 const config = loadConfig();
 const db: Db = createPool(config.databaseUrl);
-const blobs = new DiskBlobStore(config.dataDir);
+const blobs = createBlobStore(process.env, config.dataDir);
 const email = new OutboxEmailSender(config.dataDir);
 
 const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024 });

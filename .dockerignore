@@ -1,0 +1,10 @@
+node_modules
+packages/*/dist
+packages/*/node_modules
+dist
+data
+.git
+*.log
+ccopt-report.*
+demo-report.*
+ccopt-mvp-spec.md
