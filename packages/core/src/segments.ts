@@ -134,7 +134,8 @@ export function mineSegments(graphs: RunGraph[], maxSegments = MAX_SEGMENTS): Mi
       else if (fromIn && !toIn) boundaryOutputs++;
     }
     const crossings = boundaryInputs + boundaryOutputs;
-    const separability = crossings <= 2 ? 'clean' : crossings <= 5 ? 'moderate' : 'entangled';
+    const separability: MinedSegment['separability'] =
+      crossings <= 2 ? 'clean' : crossings <= 5 ? 'moderate' : 'entangled';
     const nonGenerative = classes.filter((cl) => cl === 'mechanical' || cl === 'cacheable').length;
     // dedupe example starts per run
     const seen = new Set<string>();
