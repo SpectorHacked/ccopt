@@ -11,7 +11,8 @@ import { loadConfig } from './config.js';
 import { createPool, migrate, type Db } from './db.js';
 import { createBlobStore } from './blobs.js';
 import { runPipeline } from './pipeline.js';
-import { renderClusterHtml, renderDashboardHtml, renderGraphHtml, renderSessionHtml } from './views.js';
+import { renderClusterHtml, renderDashboardHtml, renderSessionHtml } from './views.js';
+import { renderGraphPage } from './graph-view.js';
 import { sanitizeForJsonb } from './jsonb.js';
 import { redactDeep, redactSecrets } from './redact.js';
 import { buildInsightsPacket, buildRunDigest, generateInsights } from './insights.js';
@@ -517,9 +518,23 @@ app.get('/g/:sessionId', async (req, reply) => {
   }
   if (!run) return reply.code(422).send('session could not be parsed');
   const revealed = (req.query as { reveal?: string }).reveal === '1';
+  // Segments from the latest report annotate the switchable parts of this run.
+  const segRows = await db.query<{ segments: never }>(
+    `select report_json->'segments' as segments from reports
+     where tenant_id = $1 and report_json ? 'segments' order by generated_at desc limit 1`,
+    [auth.tenantId],
+  );
   return reply
     .type('text/html')
-    .send(renderGraphHtml(buildRunGraph(run), key, revealed ? (t) => t : redactSecrets, revealed));
+    .send(
+      renderGraphPage(
+        buildRunGraph(run),
+        (segRows.rows[0]?.segments as never) ?? [],
+        key,
+        revealed ? (t) => t : redactSecrets,
+        revealed,
+      ),
+    );
 });
 
 /** Cluster view: shape, determinism, volatile slots, evidence — the money page. */
