@@ -50,6 +50,16 @@ export interface MinedSegment {
   mechanicalRatio: number;
   classes: StepClass[];
   examples: { runId: string; startIndex: number }[];
+  /**
+   * Interface analysis (from dataflow edges of a representative occurrence):
+   * how many values cross INTO the segment from earlier steps and OUT to later
+   * steps. Few crossings = a clean contract = safe to extract as a sub-agent
+   * or dedicated tool. internalDataflow = cohesion inside the segment.
+   */
+  boundaryInputs: number;
+  boundaryOutputs: number;
+  internalDataflow: number;
+  separability: 'clean' | 'moderate' | 'entangled';
 }
 
 export function mineSegments(graphs: RunGraph[], maxSegments = MAX_SEGMENTS): MinedSegment[] {
@@ -110,8 +120,21 @@ export function mineSegments(graphs: RunGraph[], maxSegments = MAX_SEGMENTS): Mi
     // Classify with the REAL nodes of a representative occurrence (bash commands
     // need the raw payload to distinguish read-only from mutating).
     const rep = c.occurrences[0];
-    const repNodes = graphById.get(rep.runId)!.nodes.slice(rep.startIndex, rep.startIndex + c.labels.length);
+    const repGraph = graphById.get(rep.runId)!;
+    const repNodes = repGraph.nodes.slice(rep.startIndex, rep.startIndex + c.labels.length);
     const classes = repNodes.map((n) => classifyNode(n));
+    const lo = rep.startIndex, hi = rep.startIndex + c.labels.length;
+    let boundaryInputs = 0, boundaryOutputs = 0, internalDataflow = 0;
+    for (const e of repGraph.edges) {
+      if (e.type !== 'dataflow') continue;
+      const fromIn = e.from >= lo && e.from < hi;
+      const toIn = e.to >= lo && e.to < hi;
+      if (fromIn && toIn) internalDataflow++;
+      else if (!fromIn && toIn) boundaryInputs++;
+      else if (fromIn && !toIn) boundaryOutputs++;
+    }
+    const crossings = boundaryInputs + boundaryOutputs;
+    const separability = crossings <= 2 ? 'clean' : crossings <= 5 ? 'moderate' : 'entangled';
     const nonGenerative = classes.filter((cl) => cl === 'mechanical' || cl === 'cacheable').length;
     // dedupe example starts per run
     const seen = new Set<string>();
@@ -132,6 +155,10 @@ export function mineSegments(graphs: RunGraph[], maxSegments = MAX_SEGMENTS): Mi
       mechanicalRatio: Math.round((nonGenerative / classes.length) * 100) / 100,
       classes,
       examples,
+      boundaryInputs,
+      boundaryOutputs,
+      internalDataflow,
+      separability,
     };
   });
 

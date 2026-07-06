@@ -57,11 +57,22 @@ export interface ReportRow {
 
 export interface AiInsightRow {
   title: string;
+  action_type?: string;
   category: string;
   est_monthly_saving_usd: number;
   performance_risk: string;
   rationale: string;
-  implementation: string;
+  implementation?: string;
+  tool_name?: string;
+  tool_description?: string;
+  tool_input_sketch?: string;
+  tool_replaces?: string;
+  subagent_task?: string;
+  subagent_model?: string;
+  subagent_inputs?: string;
+  subagent_outputs?: string;
+  subagent_splice_point?: string;
+  implementation_steps?: string[];
   evidence_runs?: string[];
 }
 export interface AiInsightsBlock {
@@ -72,6 +83,16 @@ export interface AiInsightsBlock {
   generatedAt: string;
   runsAnalyzed?: number;
 }
+
+const ACTION_STYLE: Record<string, { bg: string; label: string }> = {
+  'add-tool': { bg: '#2a78d6', label: 'ADD TOOL' },
+  'extract-subagent': { bg: '#4a3aa7', label: 'EXTRACT SUB-AGENT' },
+  'compile-script': { bg: '#1baf7a', label: 'COMPILE TO SCRIPT' },
+  'cache-or-precompute': { bg: '#0e7f5b', label: 'CACHE / PRECOMPUTE' },
+  'prompt-change': { bg: '#eb6834', label: 'PROMPT CHANGE' },
+  'fix-failure': { bg: '#e34948', label: 'FIX FAILURE' },
+  other: { bg: '#8f8f96', label: 'OTHER' },
+};
 
 const CATEGORY_STYLE: Record<string, { bg: string; label: string }> = {
   'prompt-reduction': { bg: '#0b84ff', label: 'PROMPT REDUCTION' },
@@ -140,13 +161,27 @@ ${aiInsights.insights
   .map(
     (i) => `<div style="background:#fff;border:1px solid #e4e4e8;border-radius:10px;padding:12px 16px;margin-bottom:10px">
   <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:#66666e;flex-wrap:wrap">
-    ${categoryTag(i.category)}
+    ${i.action_type ? `<span style="background:${(ACTION_STYLE[i.action_type] ?? ACTION_STYLE.other).bg};color:#fff;font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 8px;border-radius:6px">${(ACTION_STYLE[i.action_type] ?? ACTION_STYLE.other).label}</span>` : categoryTag(i.category)}
     ${riskTag(i.performance_risk)}
     <b style="color:#1a1a1e;font-size:14px">${esc(i.title)}</b>
     <span style="margin-left:auto;font-weight:800;color:#00794f">${usd(i.est_monthly_saving_usd)}/mo</span>
   </div>
-  <div style="font-size:13px">${esc(i.rationale)}</div>
-  <div style="font-size:13px;color:#3c3c44;margin-top:6px"><b>Do:</b> ${esc(i.implementation)}</div>
+  <div style="font-size:13px;margin-top:6px">${esc(i.rationale)}</div>
+  ${i.tool_name ? `<div style="background:#f4f7fc;border:1px solid #cfe0f5;border-radius:8px;padding:10px 12px;margin-top:8px;font-size:12px">
+    <b style="color:#2a78d6">🔧 Tool to add:</b> <code style="font-weight:700">${esc(i.tool_name)}</code><br>
+    <span style="color:#3c3c44">${esc(i.tool_description)}</span><br>
+    <code style="font-size:11px">input: ${esc(i.tool_input_sketch)}</code><br>
+    <span style="color:#66666e;font-size:11.5px">replaces: ${esc(i.tool_replaces)}</span>
+  </div>` : ''}
+  ${i.subagent_task ? `<div style="background:#f3f1fb;border:1px solid #d8d1f0;border-radius:8px;padding:10px 12px;margin-top:8px;font-size:12px">
+    <b style="color:#4a3aa7">🤖 Sub-agent contract</b> · model <code style="font-weight:700">${esc(i.subagent_model)}</code><br>
+    <b>task:</b> ${esc(i.subagent_task)}<br>
+    <b>inputs:</b> ${esc(i.subagent_inputs)}<br>
+    <b>outputs:</b> ${esc(i.subagent_outputs)}<br>
+    <b>replaces:</b> ${esc(i.subagent_splice_point)}
+  </div>` : ''}
+  ${(i.implementation_steps ?? []).length ? `<ol style="font-size:12.5px;color:#3c3c44;margin:8px 0 0;padding-left:20px">${(i.implementation_steps ?? []).map((st) => `<li style="margin-bottom:3px">${esc(st)}</li>`).join('')}</ol>`
+    : i.implementation ? `<div style="font-size:13px;color:#3c3c44;margin-top:6px"><b>Do:</b> ${esc(i.implementation)}</div>` : ''}
   ${(i.evidence_runs ?? []).length ? `<div style="font-size:12px;color:#66666e;margin-top:6px">evidence: ${(i.evidence_runs ?? []).slice(0, 6).map((r) => `<a href="/g/${esc(r)}?key=${k}"><code>${esc(r.slice(0, 8))}…</code></a>`).join(' ')}</div>` : ''}
 </div>`,
   )

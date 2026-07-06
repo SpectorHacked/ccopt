@@ -211,20 +211,24 @@ export function buildInsightsPacket(
 
 export interface Insight {
   title: string;
-  category:
-    | 'prompt-reduction'
-    | 'prompt-caching'
-    | 'result-caching'
-    | 'knowledge-summary'
-    | 'model-rightsizing'
-    | 'deterministic-to-script'
-    | 'fix-failures'
-    | 'precompute-context'
-    | 'other';
+  action_type: 'add-tool' | 'extract-subagent' | 'compile-script' | 'cache-or-precompute' | 'prompt-change' | 'fix-failure' | 'other';
+  category: string;
   est_monthly_saving_usd: number;
   performance_risk: 'none' | 'low' | 'medium' | 'high';
   rationale: string;
-  implementation: string;
+  /** add-tool: the concrete tool spec (empty strings when N/A). */
+  tool_name: string;
+  tool_description: string;
+  tool_input_sketch: string;
+  tool_replaces: string;
+  /** extract-subagent: the delegation contract (empty strings when N/A). */
+  subagent_task: string;
+  subagent_model: string;
+  subagent_inputs: string;
+  subagent_outputs: string;
+  subagent_splice_point: string;
+  /** Numbered, do-this-then-that engineering steps. */
+  implementation_steps: string[];
   evidence_runs: string[];
 }
 
@@ -257,70 +261,62 @@ const INSIGHTS_SCHEMA = {
         type: 'object',
         additionalProperties: false,
         required: [
-          'title',
-          'category',
-          'est_monthly_saving_usd',
-          'performance_risk',
-          'rationale',
-          'implementation',
-          'evidence_runs',
+          'title', 'action_type', 'category', 'est_monthly_saving_usd', 'performance_risk', 'rationale',
+          'tool_name', 'tool_description', 'tool_input_sketch', 'tool_replaces',
+          'subagent_task', 'subagent_model', 'subagent_inputs', 'subagent_outputs', 'subagent_splice_point',
+          'implementation_steps', 'evidence_runs',
         ],
         properties: {
           title: { type: 'string' },
-          category: {
+          action_type: {
             type: 'string',
-            enum: [
-              'prompt-reduction',
-              'prompt-caching',
-              'result-caching',
-              'knowledge-summary',
-              'model-rightsizing',
-              'deterministic-to-script',
-              'fix-failures',
-              'precompute-context',
-              'other',
-            ],
+            enum: ['add-tool', 'extract-subagent', 'compile-script', 'cache-or-precompute', 'prompt-change', 'fix-failure', 'other'],
           },
+          category: { type: 'string', description: 'short kebab-case tag, e.g. knowledge-summary, model-rightsizing' },
           est_monthly_saving_usd: { type: 'number' },
           performance_risk: { type: 'string', enum: ['none', 'low', 'medium', 'high'] },
           rationale: { type: 'string' },
-          implementation: {
-            type: 'string',
-            description: 'Concrete steps the agent owner applies — specific to the tools/files/domains in the evidence.',
-          },
-          evidence_runs: {
+          tool_name: { type: 'string', description: 'add-tool only: snake_case tool name, else empty string' },
+          tool_description: { type: 'string', description: 'add-tool only: one-line description the LLM will read, else empty' },
+          tool_input_sketch: { type: 'string', description: 'add-tool only: JSON-ish input sketch e.g. {"symbol": "string"}, else empty' },
+          tool_replaces: { type: 'string', description: 'add-tool only: the exact repeated pattern it replaces, with real names from the runs, else empty' },
+          subagent_task: { type: 'string', description: 'extract-subagent only: one-sentence task statement, else empty' },
+          subagent_model: { type: 'string', description: 'extract-subagent only: recommended smaller model id, else empty' },
+          subagent_inputs: { type: 'string', description: 'extract-subagent only: exactly what crosses INTO the sub-agent, else empty' },
+          subagent_outputs: { type: 'string', description: 'extract-subagent only: exactly what it must return, else empty' },
+          subagent_splice_point: { type: 'string', description: 'extract-subagent only: which steps/segment it replaces, else empty' },
+          implementation_steps: {
             type: 'array',
             items: { type: 'string' },
-            description: 'sessionIds from the packet that demonstrate this waste.',
+            description: '3-7 numbered engineering steps, each independently actionable',
           },
+          evidence_runs: { type: 'array', items: { type: 'string' } },
         },
       },
     },
   },
 };
 
-const SYSTEM_PROMPT = `You are ccopt's cost-optimization agent. You are given telemetry for ONE tenant's AI agent: a digest of every analyzed run (tool calls, files read, folders listed, web fetches/searches, bash commands, prompt sizes, token/cache economics, canonical step sequence, error/dataflow structure) plus procedure clusters with determinism scores from a deterministic graph engine.
+const SYSTEM_PROMPT = `You are ccopt's cost-optimization agent. You receive telemetry for ONE tenant's AI agent: per-run digests (tool calls, files read, folders listed, web fetches/searches, bash commands, prompt sizes, token/cache economics, canonical step sequences, error/dataflow structure), cross-run mined segments, and procedure clusters with determinism scores.
 
-Your job: produce concrete bullets on how to make this agent cost less WITHOUT hurting its task performance.
+Your output is a set of ENGINEERING TICKETS, not advice. Every insight must be implementable by a developer tomorrow morning without further analysis. Generic suggestions ("use caching", "consider a smaller model") are failures.
 
-Two fields encode what is safe:
-- Each run's toolClassProfile and each segment's mechanicalRatio classify steps as mechanical (pure lookups — scriptable with no LLM), cacheable (idempotent fetches), generative (the intelligence), or side_effect (must be preserved; automate only with guards). The mechanicalRatio is the compile/route headroom.
-- "segments" are repeated sub-sequences mined ACROSS runs (support = runs containing them), with segment-level determinism (canonical-I/O equality across occurrences) and attributed cost. A high-support, high-determinism, high-mechanicalRatio segment is the safest money in the report: compile it to a script, or route just that segment to a small model. Reference segments by their labels and evidence runs.
+The three highest-value ticket types, in order:
 
-What to look for (use the run content, not just aggregates):
-- REPEATED LOOKUPS: the same files, folders, repos, or web domains read across many runs → precompute a summary/context artifact (e.g. a knowledge file or CLAUDE.md section) and stop re-discovering. Repeated web searches on stable topics → replace with a cached summary refreshed on a schedule.
-- PROMPT WASTE: large first prompts repeated across runs with small variations → shrink the prompt; move the stable part to a cached prefix (prompt cache reads cost ~10% of fresh input). Low cacheReadRatio (<0.5) = the prefix churns; stabilize it.
-- DETERMINISTIC SEGMENTS: clusters or step sub-sequences with determinism ≥ 0.9 → compile to a plain script (no LLM at all), or route JUST THAT SEGMENT of the graph to a much smaller model (Haiku ≈ 5-6x cheaper than Sonnet; Sonnet ≈ 5x cheaper than Opus) while the open-ended reasoning stays on the capable model. When you propose this, name the exact segment: the step indexes/labels from stepSequence or the cluster's labelSequence (e.g. "steps #4-#11: the fetch→normalize→upsert chain"), so the owner modifies only that part of the pipeline. Low-determinism work must stay on the capable model — flag risk honestly.
-- IDENTICAL RE-RUNS: equal inputs re-executed → serve a cached result (risk: none).
-- FAILURE TAX: error steps and retry motifs → root-cause once, add a guard; non-final attempts are pure re-payment.
-- BATCHABLE WORK: runs that are not latency-sensitive → 50% off via batch processing.
+1. ADD-TOOL (action_type: add-tool). Hunt for TOOL GAPS: multi-step manual patterns the agent repeats because it lacks a purpose-built tool. Signature: the same shape of grep/read/list/fetch sequence recurring across runs to answer one recurring question. When found, SPECIFY THE TOOL: snake_case name, the one-line description the LLM will read, an input sketch, and the exact pattern it replaces using REAL names from the digests (real files, real grep patterns, real domains). Estimate calls saved per run. A good tool collapses 5-15 steps into 1.
+
+2. EXTRACT-SUBAGENT (action_type: extract-subagent). Find the part that can run on a smaller LLM, using the safety data: segments/step-ranges where determinism is high, mechanicalRatio is high, and separability is "clean" (boundaryInputs/boundaryOutputs ≤ 2 = a clean contract; "entangled" segments must NOT be extracted). Specify the delegation contract: subagent_task (one sentence), subagent_model (claude-haiku-4-5 for mechanical orchestration, claude-sonnet-5 when judgment is needed), subagent_inputs (exactly the values that cross the boundary — derive from boundaryInputs), subagent_outputs (what the parent needs back), subagent_splice_point (the exact steps/segment replaced). The parent keeps the open-ended reasoning; the sub-agent owns the predictable loop.
+
+3. COMPILE-SCRIPT (action_type: compile-script). Segments with determinism ≥ 0.9 AND mechanicalRatio ≥ 0.6 AND clean/moderate separability need no LLM at all: specify the script in implementation_steps (what it reads, what it writes, where the volatile parameters go).
+
+Also allowed when the data demands them: cache-or-precompute (identical re-runs, repeated stable lookups → name the artifact: which file/summary to precompute, keyed on what), prompt-change (oversized/churning prompt prefixes — cite the cacheReadRatio and prompt sizes), fix-failure (error steps and retry motifs — name the failing step).
 
 Rules:
-- Every insight cites evidence_runs (sessionIds from the packet) — the reader opens each run's graph to verify.
-- Derive est_monthly_saving_usd from the actual costs in the packet (extrapolate by windowDays and say so in the rationale). Never invent spend.
-- performance_risk is as important as savings: "none" = mathematically identical output; "high" = could change behavior. Be conservative.
-- implementation must be specific to THIS agent's tools/files/domains — name them.
-- Order by est_monthly_saving_usd descending. 3-10 insights. If runsAnalyzed < runsTotal, note the sampling in the summary. If the data is too thin, say so and only propose what it supports.`;
+- implementation_steps: 3-7 numbered steps a developer executes verbatim; reference the tenant's actual harness (these agents run on the Claude Agent SDK / Claude Code with MCP tools).
+- Derive est_monthly_saving_usd from packet costs, extrapolated by windowDays — say so in the rationale. Never invent spend.
+- performance_risk is as important as savings: "none" = mathematically identical output; "high" = could change behavior. Extraction of an "entangled" segment is high risk — do not propose it.
+- Every insight cites evidence_runs (sessionIds). Fields that do not apply to the action_type are empty strings.
+- Order by est_monthly_saving_usd descending. 3-8 insights. If runsAnalyzed < runsTotal, note the sampling in the summary. If the data cannot support a ticket type, do not fabricate one.`;
 
 export async function generateInsights(
   llm: LlmProvider,
