@@ -187,9 +187,16 @@ app.post('/api/v1/analyze', async (req, reply) => {
  * ANTHROPIC_API_KEY (or other SDK-resolvable auth) in the server env.
  * Result is stored on the report row and shown on /ui.
  */
+// One analysis at a time per tenant — overlapping runs (double-clicks, retries)
+// stack blob parsing + LLM calls and can starve the instance.
+const analysisInFlight = new Set<string>();
+
 app.post('/api/v1/insights', async (req, reply) => {
   const auth = await authenticateFlexible(req);
   if (!auth) return reply.code(401).send({ error: 'invalid API key' });
+  if (analysisInFlight.has(auth.tenantId)) {
+    return reply.code(429).send({ error: 'an analysis is already running for this workspace — try again in a minute' });
+  }
   const q = req.query as { agent?: string; runs?: string; force?: string; redirect?: string; key?: string };
   const agentFilter = q.agent;
   const maxRuns = Math.min(80, Number(q.runs ?? 40) || 40);
@@ -210,6 +217,8 @@ app.post('/api/v1/insights', async (req, reply) => {
     }
   }
 
+  analysisInFlight.add(auth.tenantId);
+  try {
   // Trigger-only semantics: analyzing an agent generates everything fresh at
   // this moment — first the deterministic report for the agent, then the AI pass.
   const pipelineResult = await runPipeline(db, blobs, auth.tenantId, agentFilter);
@@ -306,6 +315,9 @@ app.post('/api/v1/insights', async (req, reply) => {
       error: `AI analysis failed: ${msg}`,
       hint: 'Configure the LLM provider env: ANTHROPIC_API_KEY (default), or CCOPT_LLM_PROVIDER=openai-compatible with CCOPT_LLM_BASE_URL/CCOPT_LLM_MODEL/CCOPT_LLM_API_KEY.',
     });
+  }
+  } finally {
+    analysisInFlight.delete(auth.tenantId);
   }
 });
 
