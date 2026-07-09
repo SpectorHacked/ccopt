@@ -1,7 +1,16 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-// Everything requires auth except the sign-in / sign-up routes.
-const isPublic = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)']);
+// Everything requires Clerk auth except sign-in/sign-up and the machine
+// (collector) endpoints, which authenticate with Bearer cck_ keys inside the
+// route handlers themselves.
+const isPublic = createRouteMatcher([
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/api/v1/ingest',
+  '/v1/traces',
+  '/api/v1/agents', // GET uses Clerk auth() internally; POST uses Bearer keys
+  '/api/v1/reports',
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (!isPublic(req)) await auth.protect();

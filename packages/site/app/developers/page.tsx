@@ -126,7 +126,7 @@ export default function DevelopersPage() {
         <p style={{ fontSize: 14.5, color: 'var(--ink-2)', lineHeight: 1.65, margin: '10px 0 18px' }}>
           Each agent gets its own <strong>scoped capture key</strong> — it can only upload runs for that agent, nothing else. Your workspace key never leaves your machine.
         </p>
-        <CodeBlock title="zsh — one time per agent">{`# install the ccopt CLI (private beta — we'll send you the package)
+        <CodeBlock title="zsh — one time per agent">{`npm i -g ccopt
 ccopt login --server ${COLLECTOR_URL} --key <workspace-key>
 
 ccopt agent add billing-agent

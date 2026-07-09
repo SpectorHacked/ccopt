@@ -1,8 +1,38 @@
+import { randomBytes } from 'node:crypto';
 import { auth } from '@clerk/nextjs/server';
 import { pool } from '@/lib/db.ts';
 import { resolveTenant } from '@/lib/tenant.ts';
+import { authenticateKey, hashKey } from '@/lib/agent-auth.ts';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * POST — CLI agent registration (`ccopt agent add`): Bearer tenant key →
+ * upsert the agent and mint a member key scoped to it. Plaintext returned once.
+ */
+export async function POST(req: Request) {
+  const keyAuth = await authenticateKey(req.headers.get('authorization'));
+  if (!keyAuth) return Response.json({ error: 'invalid API key' }, { status: 401 });
+  if (keyAuth.agentId) {
+    return Response.json({ error: 'agent registration requires a tenant key, not an agent-scoped key' }, { status: 403 });
+  }
+  let body: { name?: string; harness?: string } = {};
+  try { body = (await req.json()) as typeof body; } catch { /* empty */ }
+  if (!body.name) return Response.json({ error: 'name required' }, { status: 400 });
+
+  const agent = await pool.query<{ id: string }>(
+    `insert into agents (tenant_id, name, harness) values ($1,$2,$3)
+     on conflict (tenant_id, name) do update set harness = coalesce(excluded.harness, agents.harness)
+     returning id`,
+    [keyAuth.tenantId, body.name, body.harness ?? null],
+  );
+  const apiKey = `cck_${randomBytes(24).toString('hex')}`;
+  await pool.query(
+    `insert into api_keys (tenant_id, key_hash, label, role, agent_id) values ($1,$2,$3,'member',$4)`,
+    [keyAuth.tenantId, hashKey(apiKey), body.name, agent.rows[0].id],
+  );
+  return Response.json({ agentId: agent.rows[0].id, name: body.name, apiKey });
+}
 
 /**
  * This tenant's agents, derived from their runs. `optimized` is true when the

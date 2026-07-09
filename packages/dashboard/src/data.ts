@@ -241,7 +241,7 @@ export interface InstallMethod {
 export function installStep1(base: string, tenantKey?: string) {
   return {
     label: 'Log in with your workspace key, then register the agent',
-    code: `# with the ccopt CLI installed (private beta), register from your workspace
+    code: `npm i -g ccopt
 ccopt login --server ${base || '<dashboard-url>'} --key ${tenantKey ?? '<workspace-key>'}
 ccopt agent add my-agent            # → prints a scoped capture key`,
   };

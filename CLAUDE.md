@@ -135,7 +135,10 @@ Reads Neon directly via a pooled `pg` client (`lib/db.ts`).
   the Optimized indicator (`optimized_at`).
 - **Demo (in `data.ts`, not yet wired to the engine):** KPI tile values, Execution Graph
   flows (per-agent but hand-authored), Tool Synthesis, Knowledge Graph counts, the rail
-  analytics. These are the target-state design; swap for engine output as it lands.
+  analytics. **Demo panels render ONLY for the demo workspace** (`NEXT_PUBLIC_DEMO_ORG_ID`,
+  fallback = the Test Organization Clerk org id, checked via `useOrganization()` in
+  `Dashboard.tsx`) with a "Sample data" badge; every other tenant gets `OverviewLive`
+  (real totals + connect-an-agent empty state) and honest empty states for Tools/KG.
 
 Styling: `theme.css` (design tokens as CSS vars, dark theme).
 
@@ -149,17 +152,21 @@ Styling: `theme.css` (design tokens as CSS vars, dark theme).
   on push (uses the `prod` GitHub Environment + AWS secrets).
 - **Dashboard** → Vercel, auto-deploys on push to `main`.
 
-**⚠️ The install path is NOT end-to-end yet.** The dashboard only *reads* Neon — it has no
-ingest endpoint. The real collector endpoints (`POST /api/v1/ingest` for Claude
-transcripts, `POST /v1/traces` for OTLP) live in `packages/server` (Fastify, on Render,
-being retired) and write raw transcripts to **R2** (`CCOPT_S3_*`) + parsed runs to Neon.
-The install snippets point at placeholder domains (`app.optimizer.ai`), and the CLI isn't
-published. To make install real:
-1. Port `ingest` + `/v1/traces` into the **dashboard's Next.js API** (or a Lambda) so they
-   write to the same Neon the dashboard reads.
-2. Wire `CCOPT_S3_*` to the existing R2 bucket — **one bucket, tenant-prefixed keys**
-   (`<tenantId>/transcripts/…`); do **not** create a bucket per tenant/agent.
-3. Publish the CLI and put real base URLs in the install snippets.
+**✅ The dashboard IS the collector** (Render is retired, not in use). Machine endpoints
+live as Next.js routes, Bearer-authenticated with `cck_` keys (public in `middleware.ts`;
+auth inside the handlers):
+- `POST /api/v1/ingest` — gzipped/plain Claude JSONL (gzip sniffed by magic bytes since
+  proxies strip content-encoding); scoped key beats the `x-ccopt-agent-id` header.
+  ~4.5 MB Vercel body cap — CLI gzips, so almost all sessions fit.
+- `POST /v1/traces` — OTLP/HTTP GenAI JSON (uncompressed; 415 with a hint otherwise).
+- `POST /api/v1/agents` — CLI registration: tenant key → upsert agent + mint scoped key.
+- `GET /api/v1/reports` — key validation (`ccopt login` probes it).
+The engine bits these need are **vendored** in `dashboard/src/lib/engine/`
+(types/cost/transcript/otel/redact/jsonb — copies of core; keep in sync).
+`lib/agent-auth.ts` holds `authenticateKey` + `persistRun` (redaction + jsonb
+sanitizing at the single write choke point; `blob_path='inline'`, no blob store).
+The CLI is published to npm as **`ccopt`** (single-file esbuild CJS bundle, core
+inlined — no workspace dep). `packages/server` remains as reference/self-host only.
 
 ---
 

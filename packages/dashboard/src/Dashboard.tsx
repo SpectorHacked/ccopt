@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { UserButton, OrganizationSwitcher } from '@clerk/nextjs';
+import { UserButton, OrganizationSwitcher, useOrganization } from '@clerk/nextjs';
 import { Sidebar } from '@/components/Sidebar.tsx';
 import { Kpis } from '@/components/Kpis.tsx';
 import { ExecutionGraph } from '@/components/ExecutionGraph.tsx';
@@ -13,6 +13,7 @@ import { SessionDetail } from '@/components/SessionDetail.tsx';
 import { ToolSynthesis } from '@/components/ToolSynthesis.tsx';
 import { KnowledgeGraph } from '@/components/KnowledgeGraph.tsx';
 import { Insights } from '@/components/Insights.tsx';
+import { OverviewLive } from '@/components/OverviewLive.tsx';
 import { Ic } from '@/icons.tsx';
 import { ALL_AGENTS } from '@/data.ts';
 
@@ -36,11 +37,17 @@ const clerkAppearance = {
   },
 };
 
+/** Sample/demo panels (KPIs, Execution Graph, Tool Synthesis, KG) render ONLY
+ *  for the demo workspace — every real tenant gets honest live data / empty states. */
+const DEMO_ORG_ID = process.env.NEXT_PUBLIC_DEMO_ORG_ID || 'org_3GH8j31HWvYWd0VijevoNtliBqv';
+
 export function Dashboard() {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [agent, setAgent] = useState<string>(ALL_AGENTS);
   const [view, setView] = useState<View>('overview');
   const [session, setSession] = useState<{ id: string; optimized: boolean } | null>(null);
+  const { organization } = useOrganization();
+  const demo = organization?.id === DEMO_ORG_ID;
 
   useEffect(() => {
     fetch('/api/v1/agents')
@@ -121,11 +128,16 @@ export function Dashboard() {
               {view === 'session-detail' && session && (
                 <SessionDetail sessionId={session.id} optimized={session.optimized} onBack={() => setView('sessions')} />
               )}
-              {view === 'tools' && <ToolSynthesis />}
-              {view === 'kg' && <KnowledgeGraph agent={agent} />}
+              {view === 'tools' && (demo ? <ToolSynthesis /> : (
+                <div className="dag-empty">No synthesized tools yet — they appear once Optimizer compiles deterministic steps for your agents. Check <b>Insights</b> for the current candidates.</div>
+              ))}
+              {view === 'kg' && (demo ? <KnowledgeGraph agent={agent} /> : (
+                <div className="dag-empty">The knowledge graph builds up as your agents run — nothing indexed for this workspace yet.</div>
+              ))}
               {view === 'insights' && <Insights agent={agent} />}
-              {view === 'overview' && (
+              {view === 'overview' && (demo ? (
                 <>
+                  <div className="demo-note">Sample data — demo workspace</div>
                   <Kpis agent={agent} />
                   <div className="mid">
                     <div className="mid-left">
@@ -135,7 +147,14 @@ export function Dashboard() {
                     <Rail />
                   </div>
                 </>
-              )}
+              ) : (
+                <OverviewLive
+                  agents={agents}
+                  onInstall={() => setView('install')}
+                  onSessions={() => setView('sessions')}
+                  onInsights={() => setView('insights')}
+                />
+              ))}
             </div>
           </div>
         )}

@@ -1,21 +1,42 @@
 {
-  "name": "@ccopt/cli",
+  "name": "ccopt",
   "version": "0.1.0",
+  "description": "Optimizer CLI — capture AI-agent runs (Claude Code, Codex, any OTel agent) and send them to your Optimizer workspace.",
   "type": "module",
   "bin": {
-    "ccopt": "dist/index.js"
+    "ccopt": "dist/index.cjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "ai-agents",
+    "llm",
+    "claude-code",
+    "opentelemetry",
+    "cost-optimization",
+    "observability"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SpectorHacked/ccopt.git",
+    "directory": "packages/cli"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=cjs --target=node18 --outfile=dist/index.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
-  },
-  "dependencies": {
-    "@ccopt/core": "0.1.0",
-    "commander": "^12.1.0"
+    "test": "vitest run --passWithNoTests",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "@ccopt/core": "0.1.0",
     "@types/node": "^24.0.0",
+    "commander": "^12.1.0",
+    "esbuild": "^0.24.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }
