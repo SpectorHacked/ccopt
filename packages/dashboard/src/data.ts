@@ -29,10 +29,10 @@ export const nav = [
     ['Sessions', 'list', 'sessions'],
   ] },
   { group: 'Optimization', items: [
-    ['Tool Synthesis', 'wrench', ''],
+    ['Tool Synthesis', 'wrench', 'tools'],
   ] },
   { group: 'Knowledge', items: [
-    ['Knowledge Graph', 'graph', ''], ['Repository Map', 'map', ''],
+    ['Knowledge Graph', 'graph', 'kg'],
   ] },
 ] as const;
 
@@ -43,8 +43,6 @@ export const kpis: Kpi[] = [
     delta: '2.4 min', dir: 'down', tone: 'good', spark: [5, 7, 6, 9, 8, 11, 9, 12, 10, 13] },
   { key: 'cost', label: 'Cost Savings', icon: 'dollar', tint: 'var(--green)', kind: 'usd', value: 18732,
     delta: '62.1%', dir: 'down', tone: 'good', spark: [6, 8, 7, 10, 9, 8, 12, 11, 14, 13] },
-  { key: 'cache', label: 'Cache Hit Rate', icon: 'database', tint: 'var(--gold)', kind: 'pct', value: 73.8,
-    delta: '12.4%', dir: 'up', tone: 'good', spark: [7, 9, 8, 11, 10, 14, 12, 16, 13, 15] },
   { key: 'det', label: 'Deterministic Ops', icon: 'scale', tint: 'var(--purple)', kind: 'int', value: 1243,
     delta: '245', dir: 'up', tone: 'good', spark: [4, 6, 5, 8, 7, 9, 8, 11, 10, 12] },
   { key: 'ctx', label: 'Context Reduction', icon: 'grid', tint: 'var(--cyan)', kind: 'pct', value: 68.9,

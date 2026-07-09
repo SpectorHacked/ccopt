@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { UserButton, OrganizationSwitcher } from '@clerk/nextjs';
 import { Sidebar } from '@/components/Sidebar.tsx';
 import { Kpis } from '@/components/Kpis.tsx';
@@ -9,34 +9,68 @@ import { Rail } from '@/components/Rail.tsx';
 import { Bottom } from '@/components/Bottom.tsx';
 import { Install } from '@/components/Install.tsx';
 import { Sessions } from '@/components/Sessions.tsx';
+import { SessionDetail } from '@/components/SessionDetail.tsx';
+import { ToolSynthesis } from '@/components/ToolSynthesis.tsx';
+import { KnowledgeGraph } from '@/components/KnowledgeGraph.tsx';
 import { Ic } from '@/icons.tsx';
 import { ALL_AGENTS } from '@/data.ts';
 
-type View = 'overview' | 'sessions' | 'install';
+type View = 'overview' | 'sessions' | 'tools' | 'kg' | 'install' | 'session-detail';
+interface AgentInfo { agent_id: string; optimized: boolean }
+
+const clerkAppearance = {
+  elements: {
+    rootBox: { display: 'flex', alignItems: 'center' },
+    organizationSwitcherTrigger: {
+      padding: '6px 10px',
+      borderRadius: '10px',
+      border: '1px solid var(--border)',
+      backgroundColor: 'var(--panel-2)',
+      color: 'var(--txt)',
+      maxWidth: '210px',
+    },
+    organizationSwitcherTriggerIcon: { color: 'var(--txt-3)' },
+    organizationPreviewMainIdentifier: { color: 'var(--txt)', fontWeight: 600 },
+    userButtonAvatarBox: { width: '32px', height: '32px' },
+  },
+};
 
 export function Dashboard() {
-  const [agents, setAgents] = useState<string[]>([]);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [agent, setAgent] = useState<string>(ALL_AGENTS);
   const [view, setView] = useState<View>('overview');
+  const [session, setSession] = useState<{ id: string; optimized: boolean } | null>(null);
 
   useEffect(() => {
     fetch('/api/v1/agents')
       .then((r) => (r.ok ? r.json() : { agents: [] }))
-      .then((d: { agents?: Array<{ agent_id: string }> }) => setAgents((d.agents ?? []).map((a) => a.agent_id)))
+      .then((d: { agents?: AgentInfo[] }) => setAgents(d.agents ?? []))
       .catch(() => {});
   }, []);
 
-  const title = view === 'sessions' ? 'Sessions' : 'Agent Optimization Overview';
-  const sub =
-    view === 'sessions'
-      ? 'Every run captured for this workspace'
-      : agent === ALL_AGENTS
-        ? "Optimizer continuously improves your agents' performance"
-        : `Showing agent: ${agent}`;
+  const optimizedAgents = useMemo(() => new Set(agents.filter((a) => a.optimized).map((a) => a.agent_id)), [agents]);
+  const selectedOptimized = agent !== ALL_AGENTS && optimizedAgents.has(agent);
+
+  const openSession = (id: string, optimized: boolean) => {
+    setSession({ id, optimized });
+    setView('session-detail');
+  };
+
+  // Sidebar highlight: detail + install fold back onto their parent tab.
+  const sidebarActive = view === 'install' ? 'overview' : view === 'session-detail' ? 'sessions' : view;
+
+  const heads: Record<string, { title: string; sub: string }> = {
+    overview: { title: 'Agent Optimization Overview', sub: agent === ALL_AGENTS ? "Optimizer continuously improves your agents' performance" : `Showing agent: ${agent}` },
+    sessions: { title: 'Sessions', sub: 'Every run captured for this workspace' },
+    tools: { title: 'Tool Synthesis', sub: 'Deterministic tools generated for your agents' },
+    kg: { title: 'Knowledge Graph', sub: 'What Optimizer knows about your agents’ world' },
+  };
+  const head = heads[view] ?? heads.overview;
+  const showToolbar = view === 'overview' || view === 'sessions';
 
   return (
     <div className="app">
-      <Sidebar active={view === 'install' ? 'overview' : view} onSelect={(k) => setView(k as View)} />
+      <Sidebar active={sidebarActive} onSelect={(k) => setView(k as View)} />
       <main className="main">
         {view === 'install' ? (
           <Install onClose={() => setView('overview')} />
@@ -45,44 +79,59 @@ export function Dashboard() {
             <header className="head">
               <div className="head-row">
                 <div>
-                  <h1>{title}</h1>
-                  <div className="sub">{sub}</div>
+                  <h1>{head.title}</h1>
+                  <div className="sub">{head.sub}</div>
                 </div>
                 <div className="head-actions">
-                  <OrganizationSwitcher afterCreateOrganizationUrl="/" afterSelectOrganizationUrl="/" hidePersonal={false} />
-                  <UserButton afterSignOutUrl="/sign-in" />
+                  <OrganizationSwitcher appearance={clerkAppearance} afterCreateOrganizationUrl="/" afterSelectOrganizationUrl="/" hidePersonal={false} />
+                  <UserButton appearance={clerkAppearance} afterSignOutUrl="/sign-in" />
                 </div>
               </div>
 
-              <div className="toolbar">
-                <label className="agent-filter" title="Filter by agent">
-                  <Ic n="route" style={{ width: 15, height: 15, opacity: 0.75 }} />
-                  <span className="agent-filter-label">Agent</span>
-                  <select value={agent} onChange={(e) => setAgent(e.target.value)}>
-                    <option value={ALL_AGENTS}>All agents</option>
-                    {agents.map((a) => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                </label>
-                <button className="btn-primary" onClick={() => setView('install')}>
-                  <Ic n="spark" style={{ width: 15, height: 15 }} /> Install Optimizer
-                </button>
-              </div>
+              {showToolbar && (
+                <div className="toolbar">
+                  <label className="agent-filter" title="Filter by agent">
+                    <Ic n="route" style={{ width: 15, height: 15, opacity: 0.75 }} />
+                    <span className="agent-filter-label">Agent</span>
+                    <select value={agent} onChange={(e) => setAgent(e.target.value)}>
+                      <option value={ALL_AGENTS}>All agents</option>
+                      {agents.map((a) => (
+                        <option key={a.agent_id} value={a.agent_id}>
+                          {a.agent_id}{a.optimized ? '  ✓ optimized' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedOptimized && (
+                    <span className="opt-badge lg"><Ic n="spark" style={{ width: 12, height: 12 }} /> Optimized</span>
+                  )}
+                  <button className="btn-primary" onClick={() => setView('install')}>
+                    <Ic n="spark" style={{ width: 15, height: 15 }} /> Install Optimizer
+                  </button>
+                </div>
+              )}
             </header>
 
-            {view === 'sessions' ? (
-              <Sessions agent={agent} />
-            ) : (
-              <>
-                <Kpis agent={agent} />
-                <div className="mid">
-                  <div className="mid-left">
-                    <ExecutionGraph />
-                    <Bottom />
+            <div className="view-body">
+              {view === 'sessions' && <Sessions agent={agent} optimizedAgents={optimizedAgents} onOpen={openSession} />}
+              {view === 'session-detail' && session && (
+                <SessionDetail sessionId={session.id} optimized={session.optimized} onBack={() => setView('sessions')} />
+              )}
+              {view === 'tools' && <ToolSynthesis />}
+              {view === 'kg' && <KnowledgeGraph />}
+              {view === 'overview' && (
+                <>
+                  <Kpis agent={agent} />
+                  <div className="mid">
+                    <div className="mid-left">
+                      <ExecutionGraph />
+                      <Bottom />
+                    </div>
+                    <Rail />
                   </div>
-                  <Rail />
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </main>
