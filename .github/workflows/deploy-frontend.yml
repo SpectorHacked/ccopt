@@ -1,0 +1,101 @@
+name: Deploy frontend
+
+# Deploys the static frontends (marketing site + dashboard) to S3 + CloudFront.
+# Only the app(s) whose files changed are deployed. Auth is via GitHub OIDC →
+# an AWS IAM role (no long-lived keys stored in GitHub).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/site/**'
+      - 'packages/dashboard/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to deploy
+        type: choice
+        options: [all, site, dashboard]
+        default: all
+
+# Cancel an in-progress deploy of the same ref when a newer push arrives.
+concurrency:
+  group: deploy-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write   # required for OIDC role assumption
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      site: ${{ steps.filter.outputs.site }}
+      dashboard: ${{ steps.filter.outputs.dashboard }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            site:
+              - 'packages/site/**'
+            dashboard:
+              - 'packages/dashboard/**'
+
+  deploy:
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: site
+            workspace: '@ccopt/site'
+            bucket: ${{ vars.SITE_BUCKET }}
+            distribution: ${{ vars.SITE_DISTRIBUTION_ID }}
+          - app: dashboard
+            workspace: '@ccopt/dashboard'
+            bucket: ${{ vars.DASHBOARD_BUCKET }}
+            distribution: ${{ vars.DASHBOARD_DISTRIBUTION_ID }}
+    # Deploy this app if its files changed (push) or it was selected (manual run).
+    if: |
+      (github.event_name == 'push' && needs.changes.outputs[matrix.app] == 'true') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.app == 'all' || github.event.inputs.app == matrix.app))
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build ${{ matrix.app }}
+        run: npm run -w ${{ matrix.workspace }} build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sync to S3
+        run: |
+          dist="packages/${{ matrix.app }}/dist"
+          # Hashed assets: cache forever. index.html: never cache (so deploys show immediately).
+          aws s3 sync "$dist" "s3://${{ matrix.bucket }}" \
+            --delete --exclude index.html \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp "$dist/index.html" "s3://${{ matrix.bucket }}/index.html" \
+            --cache-control "no-cache"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ matrix.distribution }}" \
+            --paths "/index.html" "/"
