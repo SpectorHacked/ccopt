@@ -6,9 +6,9 @@ import { DASHBOARD_URL } from './config';
 export function Nav({ cta = true }: { cta?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 56px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'oklch(0.985 0.004 90 / 0.92)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
-      <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-        <div style={{ width: 20, height: 20, background: 'var(--ink)', position: 'relative' }}><div style={{ position: 'absolute', inset: 5, background: 'var(--cream)' }} /></div>
-        <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>Effigent</div>
+      <Link href="/" style={{ display: 'flex', alignItems: 'center' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- static export, no optimizer */}
+        <img src="/logo_effigent.png" alt="Effigent" style={{ height: 30, width: 'auto', display: 'block' }} />
       </Link>
       <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 36, fontSize: 14, color: 'var(--ink-2)', fontWeight: 500 }}>
         <Link href="/#how">How it works</Link>

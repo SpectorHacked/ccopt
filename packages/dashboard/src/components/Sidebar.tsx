@@ -5,7 +5,8 @@ export function Sidebar({ active, onSelect }: { active: string; onSelect: (key: 
   return (
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand-mark"><Ic n="spark" /></span>
+        {/* eslint-disable-next-line @next/next/no-img-element -- tiny static asset */}
+        <img src="/icon_effigent.png" alt="" className="brand-logo" />
         <span className="brand-name">Effigent</span>
       </div>
 
