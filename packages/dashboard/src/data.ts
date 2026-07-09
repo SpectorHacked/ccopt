@@ -29,6 +29,7 @@ export const nav = [
     ['Sessions', 'list', 'sessions'],
   ] },
   { group: 'Optimization', items: [
+    ['Insights', 'bulb', 'insights'],
     ['Tool Synthesis', 'wrench', 'tools'],
   ] },
   { group: 'Knowledge', items: [

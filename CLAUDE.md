@@ -99,6 +99,9 @@ Reads Neon directly via a pooled `pg` client (`lib/db.ts`).
   `models`, `optimized` (guarded if `optimized_at` column absent).
 - `GET /api/v1/sessions[?agent=]` — the tenant's runs, newest first.
 - `GET /api/v1/sessions/[id]` — one run (with `parsed`) for the DAG deep-dive.
+- `GET /api/v1/insights[?agent=]` — **the determinism brain (MVP)**: per-agent
+  action items (replace / cache) with estimated removable cost. Lean reimpl of
+  `core/determinism.ts` over `runs.parsed` (no `core` dep on Vercel).
 
 **Views** (`Dashboard.tsx` drives `view` state; sidebar in `data.ts` `nav`):
 - **Overview** — KPI tiles, per-agent **Execution Graph** (original vs optimized), and
@@ -108,6 +111,8 @@ Reads Neon directly via a pooled `pg` client (`lib/db.ts`).
 - **…DAG deep-dive** (`SessionDetail.tsx`) — sticky run context, per-model **usage table**,
   and a scrollable numbered **trace** (tool-call→result grouping, per-node model/tokens/
   duration, click-to-expand payloads).
+- **Insights** (`Insights.tsx`) — the determinism brain's output: per-agent
+  optimization opportunities (replace/cache) scored over the real runs. **Live.**
 - **Tool Synthesis** / **Knowledge Graph** (per-agent) — currently demo-backed.
 - **Install** — how to put Optimizer on an agent (see §6 for real vs aspirational).
 
@@ -172,10 +177,11 @@ by `--ref`.
 
 The "brain" turns observed runs into activated optimizations. Sequenced:
 
-1. **Determinism analysis (MVP)** — run `core/determinism.ts` over a tenant's stored runs
-   (grouped per agent by L1 shape) → per-node action items (replace / cache / keep).
-   Surface as an "Insights / Action Items" view. *`scoreDeterminism` already exists; needs
-   to run server-side over `runs.parsed` and render.*
+1. **Determinism analysis (MVP)** — ✅ **shipped** as `GET /api/v1/insights` + the
+   **Insights** view. Groups a tenant's runs per agent by execution shape, scores per-node
+   value agreement over `runs.parsed`, and emits replace/cache action items with estimated
+   removable cost. (Lean reimpl of `core/determinism.ts` so Vercel needs no workspace dep;
+   fold back into `core` if/when the API moves off Vercel.)
 2. **AI analyst** — an LLM pass over ~30 runs + the determinism signal → prioritized,
    human-readable action items with estimated savings.
 3. **DAG diff** — compare a run's graph across versions to measure how much a graph changed

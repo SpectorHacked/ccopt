@@ -468,3 +468,26 @@ body {
 .sess-search-clear { background: transparent; border: none; color: var(--txt-3); font-size: 18px; cursor: pointer; line-height: 1; padding: 0 4px; }
 .sess-search-clear:hover { color: var(--txt); }
 .sess-search-count { font-size: 11.5px; color: var(--txt-3); white-space: nowrap; }
+
+/* ---------- Optimization Insights (determinism brain) ---------- */
+.ins-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.ins-save { text-align: right; display: flex; flex-direction: column; gap: 2px; }
+.ins-save-v { font-size: 20px; font-weight: 750; color: var(--green); }
+.ins-save-k { font-size: 10.5px; color: var(--txt-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.ins-list { display: flex; flex-direction: column; }
+.ins-row { display: flex; align-items: center; gap: 13px; padding: 12px 0; border-top: 1px solid var(--border-soft); }
+.ins-row:first-child { border-top: none; }
+.ins-step { color: var(--txt-4); font-size: 12px; width: 30px; flex: none; }
+.ins-main { flex: 1; min-width: 0; }
+.ins-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ins-act { font-size: 10.5px; font-weight: 650; border-radius: 999px; padding: 2px 9px; }
+.ins-act.act-replace { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); border: 1px solid color-mix(in srgb, var(--green) 32%, transparent); }
+.ins-act.act-cache { color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); border: 1px solid color-mix(in srgb, var(--gold) 32%, transparent); }
+.ins-kind { font-size: 11px; color: var(--txt-3); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.ins-preview { margin-top: 4px; font-family: var(--mono); font-size: 11.5px; color: var(--txt-2); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.ins-metrics { display: flex; align-items: center; gap: 16px; flex: none; }
+.ins-score { color: var(--txt-2); font-size: 12px; }
+.ins-score b { color: var(--txt); font-size: 15px; }
+.ins-usd { color: var(--green); font-weight: 650; font-size: 13px; min-width: 60px; text-align: right; }
+.ins-runs { color: var(--txt-4); font-size: 12px; }
