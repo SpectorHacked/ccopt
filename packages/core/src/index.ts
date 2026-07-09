@@ -13,3 +13,4 @@ export * from './taxonomy.js';
 export * from './segments.js';
 export * from './otel.js';
 export * from './determinism.js';
+export * from './redact.js';

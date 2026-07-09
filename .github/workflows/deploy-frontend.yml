@@ -31,6 +31,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run -w @ccopt/site build
+        env:
+          # Real endpoints, injected at build time (GitHub → Settings → Environments →
+          # prod → Variables). Unset → snippets show an explicit <placeholder>.
+          NEXT_PUBLIC_COLLECTOR_URL: ${{ vars.COLLECTOR_URL }}
+          NEXT_PUBLIC_DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:

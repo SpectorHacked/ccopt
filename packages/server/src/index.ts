@@ -11,6 +11,7 @@ import {
   mineSegments,
   otelToRuns,
   parseTranscript,
+  redactSensitive,
   type OtlpTracesPayload,
   type Run,
   type WasteReport,
@@ -123,9 +124,13 @@ async function persistParsedRun(
   const graphPath = `${auth.tenantId}/graphs/${encodeURIComponent(sessionId)}.json.gz`;
   await blobs.put(graphPath, gzipSync(Buffer.from(JSON.stringify(buildRunGraph(run)))));
 
+  // Redact secrets/PII BEFORE anything is stored or analyzed — this is the
+  // single choke point both capture paths flow through.
   const trimmed: Run = sanitizeForJsonb({
     ...run,
-    steps: run.steps.map((s) => ({ ...s, payload: s.payload.slice(0, 8000) })),
+    firstPrompt: run.firstPrompt ? redactSensitive(run.firstPrompt) : run.firstPrompt,
+    finalOutput: run.finalOutput ? redactSensitive(run.finalOutput) : run.finalOutput,
+    steps: run.steps.map((s) => ({ ...s, payload: redactSensitive(s.payload.slice(0, 8000)) })),
   });
   await db.query(
     `insert into runs (tenant_id, session_id, agent_id, started_at, ended_at,

@@ -220,7 +220,12 @@ export const kgCoverage = {
 };
 
 /** Install guide — how to put Optimizer on any autonomous agent. Grounded in the
- *  real collector: register a scoped key, then pick the capture method. */
+ *  real collector: register a scoped key, then pick the capture method.
+ *  Endpoints are env-driven (NEXT_PUBLIC_COLLECTOR_URL, inlined at build time) —
+ *  never a hardcoded domain. Unset → an explicit placeholder. */
+const COLLECTOR = process.env.NEXT_PUBLIC_COLLECTOR_URL || '<collector-url>';
+const TRACES = `${COLLECTOR}/v1/traces`;
+
 export interface InstallMethod {
   key: string; name: string; icon: string; tint: string; tag: string; blurb: string;
   steps: { label: string; code: string }[];
@@ -228,9 +233,8 @@ export interface InstallMethod {
 
 export const installStep1 = {
   label: 'Register the agent — one scoped key per agent',
-  code: `# install the CLI, then register (owner/tenant key from your workspace)
-curl -fsSL https://optimizer.ai/install | sh
-ccopt login --server https://app.optimizer.ai --key <tenant-key>
+  code: `# with the ccopt CLI installed (private beta), register from your workspace
+ccopt login --server ${COLLECTOR} --key <tenant-key>
 ccopt agent add my-agent            # → prints a scoped capture key`,
 };
 
@@ -243,8 +247,8 @@ export const installMethods: InstallMethod[] = [
   },
   {
     key: 'codex', name: 'OpenAI Codex', icon: 'cpu', tint: 'var(--blue)', tag: 'OTel native',
-    blurb: 'Codex emits native OpenTelemetry — point it at the collector with your scoped key.',
-    steps: [{ label: 'Export before launching Codex', code: `export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://app.optimizer.ai/v1/traces
+    blurb: 'Codex emits native OpenTelemetry — point it at the collector with your scoped key. `ccopt install codex` prints this with the key filled in.',
+    steps: [{ label: 'Export before launching Codex', code: `export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${TRACES}
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 export OTEL_EXPORTER_OTLP_COMPRESSION=none
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <scoped-key>"` }],
@@ -257,7 +261,7 @@ export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <scoped-key>"` }],
       { label: 'Initialize at startup', code: `from traceloop.sdk import Traceloop
 
 Traceloop.init(
-    api_endpoint="https://app.optimizer.ai/v1/traces",
+    api_endpoint="${TRACES}",
     headers={"Authorization": "Bearer <scoped-key>"},
 )` },
     ],
@@ -270,7 +274,7 @@ Traceloop.init(
       { label: 'Initialize before your agent runs', code: `import * as traceloop from "@traceloop/node-server-sdk";
 
 traceloop.initialize({
-  baseUrl: "https://app.optimizer.ai/v1/traces",
+  baseUrl: "${TRACES}",
   headers: { Authorization: "Bearer <scoped-key>" },
 });` },
     ],
@@ -278,8 +282,8 @@ traceloop.initialize({
   {
     key: 'proxy', name: 'Proxy / Sidecar', icon: 'route', tint: 'var(--cyan)', tag: 'Fallback · roadmap',
     blurb: 'For closed harnesses you can neither instrument nor read: route the provider base URL through Optimizer. (Fallback path — on the roadmap.)',
-    steps: [{ label: 'Point the provider base URL at Optimizer', code: `export ANTHROPIC_BASE_URL=https://app.optimizer.ai/proxy
-export OPENAI_BASE_URL=https://app.optimizer.ai/proxy/v1
+    steps: [{ label: 'Point the provider base URL at Optimizer', code: `export ANTHROPIC_BASE_URL=${COLLECTOR}/proxy
+export OPENAI_BASE_URL=${COLLECTOR}/proxy/v1
 export OPTIMIZER_KEY=<scoped-key>` }],
   },
 ];

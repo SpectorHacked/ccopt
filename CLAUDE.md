@@ -22,7 +22,7 @@ npm workspaces (`packages/*`). TypeScript throughout; ESM (`.js` import specifie
 | `@ccopt/server` | Fastify API: ingest, agents/keys, insights (LLM), analyze, reports, viewers. **Being retired** (see §6). | Node (Render) |
 | `@ccopt/cli` | `ccopt` CLI: `login`, `agent add/list`, `run` (wrap ANY agent command), `install claude` (SessionEnd hook) + `install otel/codex/python/node` (key-filled OTel recipes per harness — table-driven, one entry per new harness), `claude-hook`, upload. | Node |
 | `@ccopt/dashboard` | Next.js App Router dashboard + its own API routes. The product UI. | Vercel |
-| `@ccopt/site` | Marketing site, Next.js **static export** (`output: 'export'`). | S3 + CloudFront |
+| `@ccopt/site` | Marketing site, Next.js **static export** (`output: 'export'`). Pages: `/` (landing), `/developers` (full per-harness install guide), `/security` (redaction + posture). Endpoints are env-driven: `NEXT_PUBLIC_COLLECTOR_URL` / `NEXT_PUBLIC_DASHBOARD_URL` (set as GitHub `prod` environment Variables `COLLECTOR_URL`/`DASHBOARD_URL`, injected in the deploy workflow; unset → explicit `<placeholder>`) — never hardcode domains. | S3 + CloudFront |
 
 The engine (`core`) is deliberately I/O-free so both capture paths (Claude transcripts
 and OTLP spans) produce the **same `Run`**, and everything downstream is unchanged.
@@ -47,6 +47,12 @@ The data contract everything else depends on.
 - **`cost.ts`** — `usageCostUsd(model, usage)`: regex-priced per model tier (unknown model
   falls back to the sonnet tier — never zero, so a mis-guess only mildly mis-estimates).
 - **`taxonomy.ts`** — classifies tool names (unknown tools degrade to `side_effect`).
+- **`redact.ts`** — sensitive-data redaction, applied in the server's `persistParsedRun`
+  (the single choke point both capture paths flow through) BEFORE storage/analysis:
+  provider/platform API keys, AWS creds, JWTs/bearer tokens, DB connection strings, PEM
+  blocks, emails, card-like numbers → typed `[REDACTED:<TYPE>]` placeholders. The
+  dashboard's `NEXT_PUBLIC_COLLECTOR_URL` env var drives install-snippet endpoints
+  (same rule as the site: no hardcoded domains).
 - **`determinism.ts`** — **the brain.** v1: `scoreDeterminism(graphs)` groups runs by L1
   (shape) and scores per-node value agreement (≥90 replace / 70–89 cache / keep).
   v2: `analyzeDeterminism(graphs)` adds three pattern detectors on top of exact

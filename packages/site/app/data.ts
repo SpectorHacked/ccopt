@@ -42,17 +42,31 @@ export const scoreBands = [
 ];
 
 export const installTabs = [
-  { key: 'cli', label: 'CLI' },
-  { key: 'docker', label: 'Docker Sidecar' },
-  { key: 'sdk', label: 'SDK' },
-  { key: 'proxy', label: 'Proxy' },
+  { key: 'claude', label: 'Claude Code' },
+  { key: 'codex', label: 'Codex CLI' },
+  { key: 'python', label: 'Python' },
+  { key: 'node', label: 'Node / TS' },
+  { key: 'anywhere', label: 'CI & containers' },
 ];
+import { TRACES_URL } from './config';
+
 export const INSTALL_CODE: Record<string, string> = {
-  cli: '$ curl https://optimizer.ai/install | sh\n$ optimizer init\n\n> Detected: Docker, Claude Code, Node\n> Installed adapters for: claude-code, node',
-  docker: 'services:\n  app:\n    image: your-app\n  optimizer:\n    image: optimizer/sidecar\n    environment:\n      - TARGET=app:3000',
-  sdk: '# Python\nimport optimizer\noptimizer.init()\n\n// Node\nimport optimizer from "optimizer"\noptimizer.init()',
-  proxy: '# Before\nAPI_BASE=https://api.openai.com\n\n# After\nAPI_BASE=http://localhost:8080\n# Optimizer proxies and optimizes traffic transparently',
+  claude:
+    '# register once, then install the session hook — zero code changes\nccopt agent add billing-agent\nccopt install claude --agent billing-agent\n\n# ✓ every finished session now uploads automatically',
+  codex:
+    `# Codex emits OpenTelemetry natively — point it at the collector\nccopt install codex --agent billing-agent\n\nexport OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${TRACES_URL}\nexport OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <scoped-key>"\ncodex "fix the failing checkout test"`,
+  python:
+    `pip install traceloop-sdk\n\n# one init() — auto-instruments LangGraph, CrewAI, AutoGen, OpenAI Agents\nfrom traceloop.sdk import Traceloop\nTraceloop.init(\n    api_endpoint="${TRACES_URL}",\n    headers={"Authorization": "Bearer <scoped-key>"},\n)`,
+  node:
+    `npm i @traceloop/node-server-sdk\n\n// instruments the openai / anthropic clients automatically\nimport * as traceloop from "@traceloop/node-server-sdk";\ntraceloop.initialize({\n  baseUrl: "${TRACES_URL}",\n  headers: { Authorization: "Bearer <scoped-key>" },\n});`,
+  anywhere:
+    '# wrap ANY command — attribution + upload handled for you\nccopt run --agent nightly-etl -- node etl.js\nccopt run --agent pr-reviewer -- claude -p "review this diff"\n\n# k8s / ECS / Lambda: set the OTEL_* env vars in the workload spec',
 };
+
+/** Harness strip shown with the install section. */
+export const supportedHarnesses = [
+  'Claude Code', 'OpenAI Codex', 'LangGraph', 'CrewAI', 'AutoGen', 'OpenAI Agents SDK', 'n8n', 'MCP agents',
+];
 
 export const originalStats = [
   { value: '28', label: 'steps' }, { value: '189K', label: 'tokens' }, { value: '14.2s', label: '' }, { value: '$2.31', label: '' },

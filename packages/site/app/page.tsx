@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import {
   SCHEMES, problems, engineParts, scoreBands, installTabs, INSTALL_CODE,
-  originalStats, optimizedStats, buildRuntimeGraph, type Scheme,
+  originalStats, optimizedStats, buildRuntimeGraph, supportedHarnesses, type Scheme,
 } from './data';
+import { Nav, Footer } from './ui';
+import { Reveal } from './reveal';
 
 const ACCENT = '#1a1d24';
 const CONTENT = 1080;
@@ -65,16 +68,7 @@ export default function Page() {
   return (
     <div style={{ width: '100%', overflowX: 'hidden' }}>
       {/* NAV */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 56px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'oklch(0.985 0.004 90 / 0.92)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <div style={{ width: 20, height: 20, background: 'var(--ink)', position: 'relative' }}><div style={{ position: 'absolute', inset: 5, background: 'var(--cream)' }} /></div>
-          <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>Optimizer</div>
-        </div>
-        <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 36, fontSize: 14, color: 'var(--ink-2)', fontWeight: 500 }}>
-          <a href="#how">How it works</a><a href="#engine">Optimization engine</a><a href="#install">Install</a><a href="#roadmap">Roadmap</a>
-        </div>
-        <button className="btn btn-primary" style={{ padding: '9px 18px', fontSize: 13.5 }}>Install in 2 minutes</button>
-      </div>
+      <Nav />
 
       {/* HERO */}
       <div style={{ position: 'relative', background: 'linear-gradient(180deg, oklch(0.95 0.018 275) 0%, oklch(0.97 0.012 275) 55%, oklch(0.985 0.004 90) 100%)', overflow: 'hidden' }}>
@@ -90,8 +84,8 @@ export default function Page() {
                 Optimizer sits alongside every agent execution, watches which tool calls and reasoning steps never change, and replaces them with cache — no code changes, no new framework.
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
-                <button className="btn btn-primary" style={{ padding: '13px 26px', fontSize: 14.5 }}>Install in 2 minutes</button>
-                <button className="btn btn-ghost" style={{ padding: '13px 22px', fontSize: 14.5 }}>Read the docs</button>
+                <Link href="/developers" className="btn btn-primary" style={{ padding: '13px 26px', fontSize: 14.5, display: 'inline-block' }}>Install in 2 minutes</Link>
+                <Link href="/security" className="btn btn-ghost" style={{ padding: '13px 22px', fontSize: 14.5, display: 'inline-block' }}>Security &amp; privacy</Link>
               </div>
               <div style={{ maxWidth: 440, borderRadius: 9, background: 'oklch(0.14 0.01 260)', boxShadow: '0 16px 36px -18px oklch(0.14 0.01 260 / 0.5)', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 12px', background: 'oklch(0.19 0.012 260)', borderBottom: '1px solid oklch(0.26 0.012 260)' }}>
@@ -101,10 +95,10 @@ export default function Page() {
                   <div style={{ margin: '0 auto', fontFamily: 'var(--mono)', fontSize: 11, color: 'oklch(0.55 0.012 260)', transform: 'translateX(-18px)' }}>zsh — optimizer install</div>
                 </div>
                 <div style={{ padding: '14px 16px', fontFamily: 'var(--mono)', fontSize: 13, lineHeight: 1.9 }}>
-                  <div style={{ color: 'oklch(0.85 0.01 150)' }}><span style={{ color: 'oklch(0.55 0.14 150)' }}>&#10142;</span> curl https://optimizer.ai/install | sh</div>
-                  <div style={{ color: 'oklch(0.55 0.012 260)' }}>&gt; Detected: Docker, Claude Code, Node</div>
-                  <div style={{ color: 'oklch(0.55 0.012 260)' }}>&gt; Installed adapters for: claude-code, node</div>
-                  <div style={{ color: 'oklch(0.85 0.01 150)', display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: 'oklch(0.55 0.14 150)' }}>&#10142;</span> optimizer init<span style={{ display: 'inline-block', width: 7, height: 14, background: 'oklch(0.75 0.01 150)', animation: 'glowPulse 1s step-end infinite' }} /></div>
+                  <div style={{ color: 'oklch(0.85 0.01 150)' }}><span style={{ color: 'oklch(0.55 0.14 150)' }}>&#10142;</span> ccopt agent add billing-agent</div>
+                  <div style={{ color: 'oklch(0.55 0.012 260)' }}>&gt; ✓ registered — scoped capture key saved</div>
+                  <div style={{ color: 'oklch(0.85 0.01 150)' }}><span style={{ color: 'oklch(0.55 0.14 150)' }}>&#10142;</span> ccopt install claude --agent billing-agent</div>
+                  <div style={{ color: 'oklch(0.55 0.012 260)', display: 'flex', alignItems: 'center', gap: 6 }}>&gt; ✓ every finished session now uploads<span style={{ display: 'inline-block', width: 7, height: 14, background: 'oklch(0.75 0.01 150)', animation: 'glowPulse 1s step-end infinite' }} /></div>
                 </div>
               </div>
             </div>
@@ -146,6 +140,7 @@ export default function Page() {
 
       {/* PROBLEM */}
       <Section>
+        <Reveal>
         <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.1fr', gap: 60, alignItems: 'start' }}>
           <div>
             <Eyebrow hue="20">The problem</Eyebrow>
@@ -161,10 +156,12 @@ export default function Page() {
             ))}
           </div>
         </div>
+        </Reveal>
       </Section>
 
       {/* HOW IT WORKS */}
       <Section id="how">
+        <Reveal>
         <Eyebrow hue="290">How it works</Eyebrow>
         <div className="h-serif" style={{ fontSize: 32, marginBottom: 44, maxWidth: 640 }}>Every execution becomes a graph. Every graph gets compiled down.</div>
 
@@ -229,10 +226,12 @@ export default function Page() {
             </div>
           ))}
         </div>
+        </Reveal>
       </Section>
 
       {/* DETERMINISM SCORE */}
       <Section>
+        <Reveal>
         <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.1fr', gap: 60, alignItems: 'center' }}>
           <div>
             <Eyebrow hue="85">Determinism engine</Eyebrow>
@@ -255,19 +254,30 @@ export default function Page() {
             ))}
           </div>
         </div>
+        </Reveal>
       </Section>
 
       {/* INSTALL */}
       <Section id="install">
-        <Eyebrow hue="250">Universal installation</Eyebrow>
-        <div className="h-serif" style={{ fontSize: 32, marginBottom: 8 }}>Install once. Change nothing.</div>
-        <div style={{ fontSize: 15, color: 'var(--ink-2)', marginBottom: 36, maxWidth: 600 }}>Optimizer detects your stack and installs the right adapter automatically.</div>
-        <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)' }}>
-          {installTabs.map((t) => (
-            <div key={t.key} onClick={() => setTab(t.key)} style={{ padding: '10px 18px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', color: tab === t.key ? 'var(--ink)' : 'var(--ink-4)', borderBottom: tab === t.key ? '2px solid var(--ink)' : '2px solid transparent', marginBottom: -1 }}>{t.label}</div>
-          ))}
-        </div>
-        <div style={{ background: 'oklch(0.16 0.012 260)', borderRadius: '0 0 8px 8px', padding: '26px 28px', fontFamily: 'var(--mono)', fontSize: 14, color: 'oklch(0.85 0.01 150)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{INSTALL_CODE[tab]}</div>
+        <Reveal>
+          <Eyebrow hue="250">Universal installation</Eyebrow>
+          <div className="h-serif" style={{ fontSize: 32, marginBottom: 8 }}>Install once. Change nothing.</div>
+          <div style={{ fontSize: 15, color: 'var(--ink-2)', marginBottom: 36, maxWidth: 600 }}>
+            One scoped key per agent, then pick the capture method for your harness — the engine is identical for every one of them.
+          </div>
+          <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)', overflowX: 'auto' }}>
+            {installTabs.map((t) => (
+              <div key={t.key} onClick={() => setTab(t.key)} style={{ padding: '10px 18px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: tab === t.key ? 'var(--ink)' : 'var(--ink-4)', borderBottom: tab === t.key ? '2px solid var(--ink)' : '2px solid transparent', marginBottom: -1 }}>{t.label}</div>
+            ))}
+          </div>
+          <div style={{ background: 'oklch(0.16 0.012 260)', borderRadius: '0 0 8px 8px', padding: '26px 28px', fontFamily: 'var(--mono)', fontSize: 13.5, color: 'oklch(0.85 0.01 150)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{INSTALL_CODE[tab]}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginTop: 22 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-3)' }}>
+              {supportedHarnesses.map((h) => <span key={h}>{h}</span>)}
+            </div>
+            <Link href="/developers" style={{ fontSize: 14, fontWeight: 600, color: 'oklch(0.4 0.14 250)' }}>Full developer guide &rarr;</Link>
+          </div>
+        </Reveal>
       </Section>
 
       {/* MANIFESTO */}
@@ -282,18 +292,17 @@ export default function Page() {
 
       {/* FOOTER CTA */}
       <div style={{ borderTop: '1px solid var(--line)', padding: '90px 32px', textAlign: 'center' }}>
-        <div className="h-serif" style={{ fontSize: 34, marginBottom: 26 }}>Stop paying your agents to think twice.</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-          <button className="btn btn-primary" style={{ padding: '13px 26px', fontSize: 14.5 }}>Install in 2 minutes</button>
-          <button className="btn btn-ghost" style={{ padding: '13px 22px', fontSize: 14.5 }}>Talk to us</button>
-        </div>
+        <Reveal>
+          <div className="h-serif" style={{ fontSize: 34, marginBottom: 26 }}>Stop paying your agents to think twice.</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+            <Link href="/developers" className="btn btn-primary" style={{ padding: '13px 26px', fontSize: 14.5, display: 'inline-block' }}>Install in 2 minutes</Link>
+            <Link href="/security" className="btn btn-ghost" style={{ padding: '13px 22px', fontSize: 14.5, display: 'inline-block' }}>Security &amp; privacy</Link>
+          </div>
+        </Reveal>
       </div>
 
       {/* FOOTER */}
-      <div style={{ borderTop: '1px solid var(--line)', padding: '28px 56px', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--ink-4)' }}>
-        <div>© 2026 Optimizer</div>
-        <div style={{ display: 'flex', gap: 24 }}><a href="#">Docs</a><a href="#">GitHub</a><a href="#">Security</a></div>
-      </div>
+      <Footer />
     </div>
   );
 }

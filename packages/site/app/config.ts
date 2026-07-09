@@ -1,0 +1,10 @@
+/**
+ * Deployment endpoints — env-driven, never hardcoded domains.
+ * NEXT_PUBLIC_* vars are inlined at build time:
+ *  - site (static export): set in the GitHub Action build step
+ *  - local: .env.local
+ * When unset, snippets show an explicit placeholder instead of a fake domain.
+ */
+export const COLLECTOR_URL = process.env.NEXT_PUBLIC_COLLECTOR_URL || '<collector-url>';
+export const DASHBOARD_URL = process.env.NEXT_PUBLIC_DASHBOARD_URL || '<dashboard-url>';
+export const TRACES_URL = `${COLLECTOR_URL}/v1/traces`;
