@@ -20,13 +20,38 @@ export async function POST(req: Request) {
   try { body = (await req.json()) as typeof body; } catch { /* empty */ }
   if (!body.name) return Response.json({ error: 'name required' }, { status: 400 });
 
+  // Plan limit: distinct registered agents per tenant. tenants.max_agents wins
+  // (set per plan / design-partner deal); null or missing column → default.
+  const DEFAULT_MAX_AGENTS = 2; // Free tier
+  let maxAgents = DEFAULT_MAX_AGENTS;
+  try {
+    const t = await pool.query<{ max_agents: number | null }>(
+      'select max_agents from tenants where id = $1', [keyAuth.tenantId],
+    );
+    if (t.rows[0]?.max_agents != null) maxAgents = t.rows[0].max_agents;
+  } catch { /* column not migrated yet → default */ }
+  const existing = await pool.query<{ n: string; known: boolean }>(
+    `select count(*)::text as n,
+            bool_or(name = $2) as known
+       from agents where tenant_id = $1`,
+    [keyAuth.tenantId, body.name],
+  );
+  const count = Number(existing.rows[0]?.n ?? 0);
+  const isReRegister = existing.rows[0]?.known === true;
+  if (!isReRegister && count >= maxAgents) {
+    return Response.json(
+      { error: `agent limit reached (${maxAgents} for this workspace) — contact us to raise it` },
+      { status: 403 },
+    );
+  }
+
   const agent = await pool.query<{ id: string }>(
     `insert into agents (tenant_id, name, harness) values ($1,$2,$3)
      on conflict (tenant_id, name) do update set harness = coalesce(excluded.harness, agents.harness)
      returning id`,
     [keyAuth.tenantId, body.name, body.harness ?? null],
   );
-  const apiKey = `cck_${randomBytes(24).toString('hex')}`;
+  const apiKey = `eff_${randomBytes(24).toString('hex')}`;
   await pool.query(
     `insert into api_keys (tenant_id, key_hash, label, role, agent_id) values ($1,$2,$3,'member',$4)`,
     [keyAuth.tenantId, hashKey(apiKey), body.name, agent.rows[0].id],

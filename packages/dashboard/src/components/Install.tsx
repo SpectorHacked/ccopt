@@ -57,7 +57,7 @@ function Credentials({ onKey }: { onKey: (k: string) => void }) {
       <div className="step-body">
         <div className="panel-title">Your workspace credentials</div>
         <div className="panel-sub" style={{ marginBottom: 14 }}>
-          The workspace key is what <span className="mono-name" style={{ fontSize: 12 }}>ccopt login</span> takes. Keys are stored hashed — the value is shown once, right here.
+          The workspace key is what <span className="mono-name" style={{ fontSize: 12 }}>effigent login</span> takes. Keys are stored hashed — the value is shown once, right here.
         </div>
 
         <div className="cred-row">

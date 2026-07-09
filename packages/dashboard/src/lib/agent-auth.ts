@@ -14,10 +14,10 @@ export interface AgentAuth {
   agentName?: string;
 }
 
-/** Bearer `cck_` key → tenant (+ bound agent for scoped keys). */
+/** Bearer `eff_` (or legacy `cck_`) key → tenant (+ bound agent for scoped keys). */
 export async function authenticateKey(header: string | null): Promise<AgentAuth | null> {
   const token = header?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-  if (!token || !token.startsWith('cck_')) return null;
+  if (!token || !/^(eff|cck)_/.test(token)) return null;
   const { rows } = await pool.query<{ tenant_id: string; role: string; agent_id: string | null; agent_name: string | null }>(
     `select k.tenant_id, k.role, k.agent_id, a.name as agent_name
        from api_keys k left join agents a on a.id = k.agent_id

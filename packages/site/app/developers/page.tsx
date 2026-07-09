@@ -14,8 +14,8 @@ const HARNESSES = [
     name: 'Claude Code',
     tag: 'Hook · zero-touch',
     blurb:
-      'One command installs a SessionEnd hook. Every finished session uploads automatically — event-driven, no polling, no changes to your agent. The scoped key stays in ~/.ccopt and is never written into your agent configuration.',
-    code: `ccopt install claude --agent billing-agent
+      'One command installs a SessionEnd hook. Every finished session uploads automatically — event-driven, no polling, no changes to your agent. The scoped key stays in ~/.effigent and is never written into your agent configuration.',
+    code: `effigent install claude --agent billing-agent
 
 # ✓ SessionEnd hook installed in ~/.claude/settings.json
 #   Every finished session now uploads under 'billing-agent'.`,
@@ -26,8 +26,8 @@ const HARNESSES = [
     name: 'OpenAI Codex CLI',
     tag: 'Native OpenTelemetry',
     blurb:
-      'Codex emits OpenTelemetry natively. `ccopt install codex` prints the exact environment block — with your scoped key already filled in — to point it at the collector.',
-    code: `ccopt install codex --agent billing-agent
+      'Codex emits OpenTelemetry natively. `effigent install codex` prints the exact environment block — with your scoped key already filled in — to point it at the collector.',
+    code: `effigent install codex --agent billing-agent
 
 # prints, ready to paste (endpoint + key filled in from your login):
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${TRACES_URL}
@@ -77,10 +77,10 @@ traceloop.initialize({
     name: 'CI, cron & containers',
     tag: 'EKS · ECS · Lambda · GitHub Actions',
     blurb:
-      'Everything above is environment-variable driven, so it works identically in Kubernetes, ECS task definitions, Lambda environment config, and CI. For one-off or scheduled commands, `ccopt run` wraps any agent invocation and handles attribution for you.',
+      'Everything above is environment-variable driven, so it works identically in Kubernetes, ECS task definitions, Lambda environment config, and CI. For one-off or scheduled commands, `effigent run` wraps any agent invocation and handles attribution for you.',
     code: `# wrap ANY command — attribution + upload handled automatically
-ccopt run --agent nightly-etl -- node etl.js
-ccopt run --agent pr-reviewer -- claude -p "review this diff"
+effigent run --agent nightly-etl -- node etl.js
+effigent run --agent pr-reviewer -- claude -p "review this diff"
 
 # containers: set the four OTEL_* vars in your task definition / pod spec —
 # the scoped key is the only credential the workload needs.`,
@@ -126,11 +126,11 @@ export default function DevelopersPage() {
         <p style={{ fontSize: 14.5, color: 'var(--ink-2)', lineHeight: 1.65, margin: '10px 0 18px' }}>
           Each agent gets its own <strong>scoped capture key</strong> — it can only upload runs for that agent, nothing else. Your workspace key never leaves your machine.
         </p>
-        <CodeBlock title="zsh — one time per agent">{`npm i -g ccopt
-ccopt login --server ${COLLECTOR_URL} --key <workspace-key>
+        <CodeBlock title="zsh — one time per agent">{`npm i -g effigent
+effigent login --server ${COLLECTOR_URL} --key <workspace-key>
 
-ccopt agent add billing-agent
-# ✓ registered 'billing-agent' — scoped capture key saved to ~/.ccopt/config.json`}</CodeBlock>
+effigent agent add billing-agent
+# ✓ registered 'billing-agent' — scoped capture key saved to ~/.effigent/config.json`}</CodeBlock>
       </DocSection>
 
       {/* Step 2 */}

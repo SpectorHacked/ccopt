@@ -1,4 +1,4 @@
-/** Shared transcript upload — used by `ccopt sync` (batch) and `ccopt run` (per-run, from CI). */
+/** Shared transcript upload — used by `effigent sync` (batch) and `effigent run` (per-run, from CI). */
 
 import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';

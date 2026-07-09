@@ -12,7 +12,7 @@ const RULES: Array<{ name: string; re: RegExp }> = [
   { name: 'PRIVATE_KEY', re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
   // provider + platform keys
   { name: 'API_KEY', re: /\b(?:sk|rk)-[A-Za-z0-9_-]{16,}\b/g }, // OpenAI/Anthropic/Stripe-style
-  { name: 'API_KEY', re: /\bcck_[a-f0-9]{16,}\b/g }, // our own capture keys
+  { name: 'API_KEY', re: /\b(?:eff|cck)_[a-f0-9]{16,}\b/g }, // our own capture keys
   { name: 'API_KEY', re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g }, // GitHub
   { name: 'API_KEY', re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g }, // Slack
   { name: 'API_KEY', re: /\bAIza[A-Za-z0-9_-]{30,}\b/g }, // Google

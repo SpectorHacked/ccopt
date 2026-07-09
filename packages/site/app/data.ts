@@ -52,15 +52,15 @@ import { TRACES_URL } from './config';
 
 export const INSTALL_CODE: Record<string, string> = {
   claude:
-    'npm i -g ccopt\n\n# register once, then install the session hook — zero code changes\nccopt agent add billing-agent\nccopt install claude --agent billing-agent\n\n# ✓ every finished session now uploads automatically',
+    'npm i -g effigent\n\n# register once, then install the session hook — zero code changes\neffigent agent add billing-agent\neffigent install claude --agent billing-agent\n\n# ✓ every finished session now uploads automatically',
   codex:
-    `# Codex emits OpenTelemetry natively — point it at the collector\nccopt install codex --agent billing-agent\n\nexport OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${TRACES_URL}\nexport OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <scoped-key>"\ncodex "fix the failing checkout test"`,
+    `# Codex emits OpenTelemetry natively — point it at the collector\neffigent install codex --agent billing-agent\n\nexport OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${TRACES_URL}\nexport OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <scoped-key>"\ncodex "fix the failing checkout test"`,
   python:
     `pip install traceloop-sdk\n\n# one init() — auto-instruments LangGraph, CrewAI, AutoGen, OpenAI Agents\nfrom traceloop.sdk import Traceloop\nTraceloop.init(\n    api_endpoint="${TRACES_URL}",\n    headers={"Authorization": "Bearer <scoped-key>"},\n)`,
   node:
     `npm i @traceloop/node-server-sdk\n\n// instruments the openai / anthropic clients automatically\nimport * as traceloop from "@traceloop/node-server-sdk";\ntraceloop.initialize({\n  baseUrl: "${TRACES_URL}",\n  headers: { Authorization: "Bearer <scoped-key>" },\n});`,
   anywhere:
-    '# wrap ANY command — attribution + upload handled for you\nccopt run --agent nightly-etl -- node etl.js\nccopt run --agent pr-reviewer -- claude -p "review this diff"\n\n# k8s / ECS / Lambda: set the OTEL_* env vars in the workload spec',
+    '# wrap ANY command — attribution + upload handled for you\neffigent run --agent nightly-etl -- node etl.js\neffigent run --agent pr-reviewer -- claude -p "review this diff"\n\n# k8s / ECS / Lambda: set the OTEL_* env vars in the workload spec',
 };
 
 /** Harness strip shown with the install section. */

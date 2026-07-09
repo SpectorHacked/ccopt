@@ -1,6 +1,6 @@
 /**
  * Local run discovery. Primary source: Claude Code's own transcript store
- * (~/.claude/projects/**\/*.jsonl) — zero-install capture. `ccopt run` adds an
+ * (~/.claude/projects/**\/*.jsonl) — zero-install capture. `effigent run` adds an
  * agent-map so programmatic/CI sessions carry an explicit agentId.
  */
 
@@ -9,9 +9,9 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseTranscript, type Run } from '@ccopt/core';
 
-export const CCOPT_HOME = join(homedir(), '.ccopt');
+export const CCOPT_HOME = join(homedir(), '.effigent');
 export const AGENT_MAP_PATH = join(CCOPT_HOME, 'agent-map.json');
-/** Where `ccopt run --isolated` preserves transcripts when not uploading. */
+/** Where `effigent run --isolated` preserves transcripts when not uploading. */
 export const CCOPT_STORE = join(CCOPT_HOME, 'store');
 
 export function defaultSource(): string {
@@ -23,7 +23,7 @@ export function defaultSources(): string[] {
   return [defaultSource(), CCOPT_STORE];
 }
 
-/** Per-session tag files — one file per sessionId so concurrent `ccopt run`
+/** Per-session tag files — one file per sessionId so concurrent `effigent run`
  *  wrappers never race on a shared JSON (last-writer-wins clobbering). */
 export const AGENT_TAGS_DIR = join(CCOPT_HOME, 'agent-map.d');
 export const CONFIG_PATH = join(CCOPT_HOME, 'config.json');
@@ -39,7 +39,7 @@ export interface CcoptConfig {
   apiKey?: string;
   /** cwd-based attribution for agents that run in unpredictable dirs (temp clones, daemons). */
   agentRules?: AgentRule[];
-  /** Registered agents and their scoped capture keys (from `ccopt agent add`). */
+  /** Registered agents and their scoped capture keys (from `effigent agent add`). */
   agents?: Record<string, { agentId: string; key: string; harness?: string }>;
 }
 

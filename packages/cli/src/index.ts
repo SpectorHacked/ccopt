@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * ccopt — The Agent Waste Report CLI.
+ * effigent — the Optimizer CLI.
  *
- *   ccopt analyze   local-only mode: engine + report on your own transcripts
- *   ccopt sync      upload session transcripts to the hosted service
- *   ccopt run       headless wrapper tagging a Claude Code run with an agentId
+ *   effigent analyze   local-only mode: engine + report on your own transcripts
+ *   effigent sync      upload session transcripts to the hosted service
+ *   effigent run       headless wrapper tagging a Claude Code run with an agentId
  */
 
 import { Command } from 'commander';
@@ -31,7 +31,7 @@ import {
 import { uploadSessionFile } from './upload.js';
 
 const program = new Command();
-program.name('ccopt').description('ccopt — graph-based agent waste detection').version('0.1.0');
+program.name('effigent').description('effigent — the Optimizer CLI: capture agent runs, compile away the waste').version('0.1.0');
 
 program
   .command('analyze')
@@ -40,8 +40,8 @@ program
   .option('--days <n>', 'analysis window in days', '30')
   .option('--agent <substr>', 'only include agents whose id contains this substring')
   .option('--min-steps <n>', 'ignore trivial sessions with fewer steps', '3')
-  .option('--out <file>', 'HTML report output path', 'ccopt-report.html')
-  .option('--json <file>', 'JSON report output path', 'ccopt-report.json')
+  .option('--out <file>', 'HTML report output path', 'effigent-report.html')
+  .option('--json <file>', 'JSON report output path', 'effigent-report.json')
   .action((opts) => {
     const sources: string[] = Array.isArray(opts.source) ? opts.source : [opts.source];
     const runs = loadRuns(sources.map((s: string) => resolve(s)), {
@@ -72,8 +72,8 @@ program
 
 program
   .command('login')
-  .description('Persist the ccopt server + API key (used as defaults by sync/run/doctor)')
-  .requiredOption('--server <url>', 'ccopt server base URL')
+  .description('Persist the effigent server + API key (used as defaults by sync/run/doctor)')
+  .requiredOption('--server <url>', 'effigent server base URL')
   .requiredOption('--key <apiKey>', 'tenant API key')
   .action(async (opts) => {
     const config = loadConfig();
@@ -110,7 +110,7 @@ program
   .action((opts) => {
     const config = loadConfig();
     if (!config.server || !config.apiKey) {
-      console.error('Run `ccopt login` first — invite packages your server + key.');
+      console.error('Run `effigent login` first — invite packages your server + key.');
       process.exitCode = 2;
       return;
     }
@@ -126,20 +126,20 @@ program
     console.log(
       `  curl -fsSL https://raw.githubusercontent.com/SpectorHacked/ccopt/main/install.sh | sh -s -- --join ${encoded}\n`,
     );
-    console.log('It installs ccopt, joins this workspace, schedules a 15-minute sync, and uploads their history.');
+    console.log('It installs effigent, joins this workspace, schedules a 15-minute sync, and uploads their history.');
   });
 
 program
   .command('join')
   .description('Join a workspace from an invite token: config + schedule + first sync, in one shot')
-  .argument('<token>', 'setup token from `ccopt invite`')
+  .argument('<token>', 'setup token from `effigent invite`')
   .action(async (rawToken: string) => {
     let token: SetupToken;
     try {
       token = JSON.parse(Buffer.from(rawToken, 'base64url').toString('utf8')) as SetupToken;
       if (token.v !== 1 || !token.server || !token.apiKey) throw new Error('missing fields');
     } catch {
-      console.error('Invalid setup token. Ask for a fresh one via `ccopt invite`.');
+      console.error('Invalid setup token. Ask for a fresh one via `effigent invite`.');
       process.exitCode = 2;
       return;
     }
@@ -164,17 +164,17 @@ program
     // Schedule the recurring sync with THIS node + THIS ccopt (absolute paths:
     // launchd/cron have no nvm/homebrew PATH).
     const nodeBin = process.execPath;
-    const ccoptBin = resolve(process.argv[1]);
+    const cliBin = resolve(process.argv[1]);
     const syncArgs = ['sync', ...(token.syncAgent ? ['--agent', token.syncAgent] : []), '--days', '7'];
 
     if (process.platform === 'darwin') {
-      const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.ccopt.sync.plist');
-      const args = [nodeBin, ccoptBin, ...syncArgs];
+      const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.effigent.sync.plist');
+      const args = [nodeBin, cliBin, ...syncArgs];
       const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.ccopt.sync</string>
+  <key>Label</key><string>com.effigent.sync</string>
   <key>ProgramArguments</key>
   <array>
 ${args.map((a) => `    <string>${a}</string>`).join('\n')}
@@ -190,19 +190,19 @@ ${args.map((a) => `    <string>${a}</string>`).join('\n')}
       mkdirSync(CCOPT_HOME, { recursive: true });
       writeFileSync(plistPath, plist);
       const uid = process.getuid?.() ?? 501;
-      spawnSync('launchctl', ['bootout', `gui/${uid}/com.ccopt.sync`], { stdio: 'ignore' });
+      spawnSync('launchctl', ['bootout', `gui/${uid}/com.effigent.sync`], { stdio: 'ignore' });
       const boot = spawnSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { encoding: 'utf8' });
       console.log(
         boot.status === 0
-          ? '✓ scheduled: launchd job com.ccopt.sync (every 15 min)'
+          ? '✓ scheduled: launchd job com.effigent.sync (every 15 min)'
           : `! could not load launchd job (${boot.stderr?.trim()}) — plist written to ${plistPath}`,
       );
     } else {
-      const cronLine = `*/15 * * * * ${nodeBin} ${ccoptBin} ${syncArgs.join(' ')} >> ${join(CCOPT_HOME, 'sync.log')} 2>&1`;
+      const cronLine = `*/15 * * * * ${nodeBin} ${cliBin} ${syncArgs.join(' ')} >> ${join(CCOPT_HOME, 'sync.log')} 2>&1`;
       const current = spawnSync('crontab', ['-l'], { encoding: 'utf8' });
       const existing = current.status === 0 ? current.stdout : '';
       if (existing.includes('ccopt') && existing.includes('sync')) {
-        console.log('✓ scheduled: crontab already has a ccopt sync entry');
+        console.log('✓ scheduled: crontab already has a effigent sync entry');
       } else {
         const set = spawnSync('crontab', ['-'], { input: `${existing.trimEnd()}\n${cronLine}\n`, encoding: 'utf8' });
         console.log(
@@ -214,7 +214,7 @@ ${args.map((a) => `    <string>${a}</string>`).join('\n')}
     }
 
     console.log('Uploading existing history…');
-    const first = spawnSync(nodeBin, [ccoptBin, ...syncArgs, '--days', '30'], { stdio: 'inherit' });
+    const first = spawnSync(nodeBin, [cliBin, ...syncArgs, '--days', '30'], { stdio: 'inherit' });
     console.log(
       first.status === 0
         ? '\nDone. This machine now reports to the workspace continuously.'
@@ -224,9 +224,9 @@ ${args.map((a) => `    <string>${a}</string>`).join('\n')}
 
 program
   .command('sync')
-  .description('Upload local session transcripts to the ccopt service')
-  .option('--server <url>', 'ccopt server base URL (default: ccopt login config)')
-  .option('--key <apiKey>', 'tenant API key (default: ccopt login config)')
+  .description('Upload local session transcripts to the effigent service')
+  .option('--server <url>', 'effigent server base URL (default: effigent login config)')
+  .option('--key <apiKey>', 'tenant API key (default: effigent login config)')
   .option('--source <dir...>', 'transcript directories', defaultSources())
   .option('--days <n>', 'only sync sessions modified in the last N days', '30')
   .option('--agent <substr>', 'only sync sessions whose resolved agentId contains this substring')
@@ -237,10 +237,10 @@ program
   )
   .action(async (opts) => {
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
-    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+    const apiKey: string | undefined = opts.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
     if (!server || !apiKey) {
-      console.error('No server/key: pass --server/--key, set CCOPT_SERVER/CCOPT_API_KEY, or run `ccopt login`.');
+      console.error('No server/key: pass --server/--key, set CCOPT_SERVER/CCOPT_API_KEY, or run `effigent login`.');
       process.exitCode = 2;
       return;
     }
@@ -258,7 +258,7 @@ program
       .filter((s) => !opts.agent || (s.agentId ?? '').includes(opts.agent));
     if (sessions.length === 0) {
       console.error(
-        'Nothing to sync. (Only attributed sessions upload — add an agentRule, use `ccopt tag`/`ccopt run`, or pass --all.)',
+        'Nothing to sync. (Only attributed sessions upload — add an agentRule, use `effigent tag`/`effigent run`, or pass --all.)',
       );
       return;
     }
@@ -299,7 +299,7 @@ program
 
 program
   .command('doctor')
-  .description('Check that ccopt can capture, attribute, and (optionally) upload on this machine')
+  .description('Check that effigent can capture, attribute, and (optionally) upload on this machine')
   .option('--server <url>', 'ccopt server to check (env CCOPT_SERVER)')
   .option('--key <apiKey>', 'tenant API key to verify (env CCOPT_API_KEY)')
   .action(async (opts) => {
@@ -311,7 +311,7 @@ program
       failures++;
     };
 
-    console.log('ccopt doctor\n');
+    console.log('effigent doctor\n');
 
     const major = Number(process.versions.node.split('.')[0]);
     major >= 20 ? ok(`node ${process.versions.node}`) : bad(`node ${process.versions.node} — need ≥ 20`);
@@ -338,7 +338,7 @@ program
 
     const tags = Object.keys(loadAgentMap()).length;
     tags > 0
-      ? ok(`${tags} session(s) explicitly attributed via ccopt run/tag`)
+      ? ok(`${tags} session(s) explicitly attributed via effigent run/tag`)
       : warn('no explicit attributions yet — untagged runs fall back to their directory name');
 
     if (process.env.ANTHROPIC_API_KEY) ok('env auth: ANTHROPIC_API_KEY set (--isolated will work)');
@@ -346,13 +346,13 @@ program
       ok('env auth: Bedrock/Vertex configured (--isolated will work)');
     else
       warn(
-        'no env-based auth detected — `ccopt run --isolated` needs ANTHROPIC_API_KEY (or Bedrock/Vertex); ' +
+        'no env-based auth detected — `effigent run --isolated` needs ANTHROPIC_API_KEY (or Bedrock/Vertex); ' +
           'non-isolated capture works regardless',
       );
 
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
-    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+    const apiKey: string | undefined = opts.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
     if (server) {
       try {
         const health = await fetch(`${server.replace(/\/$/, '')}/healthz`);
@@ -408,10 +408,10 @@ program
   .action(async (cmd: string[], opts) => {
     const argv = [...cmd];
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
-    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+    const apiKey: string | undefined = opts.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
     if (server && !apiKey) {
-      console.error('[ccopt] --server requires --key (or CCOPT_API_KEY)');
+      console.error('[effigent] --server requires --key (or CCOPT_API_KEY)');
       process.exitCode = 2;
       return;
     }
@@ -429,7 +429,7 @@ program
     let isoDir: string | undefined;
     if (opts.isolated) {
       // Private transcript store per run — exact attribution, concurrency-safe.
-      isoDir = mkdtempSync(join(tmpdir(), 'ccopt-run-'));
+      isoDir = mkdtempSync(join(tmpdir(), 'effigent-run-'));
       env.CLAUDE_CONFIG_DIR = isoDir;
       // Carry over file-based credentials/state when present (Linux/CI).
       for (const f of ['.credentials.json']) {
@@ -446,7 +446,7 @@ program
     // Snapshot → run → diff. In isolated mode the diff is exact; in shared mode,
     // concurrent sessions on this machine during the window are attributed too.
     const before = new Map(discoverSessions(watchDir).map((s) => [s.path, s.mtimeMs]));
-    console.error(`[ccopt] agent=${opts.agent}${opts.isolated ? ' isolated' : ''} watching=${watchDir}`);
+    console.error(`[effigent] agent=${opts.agent}${opts.isolated ? ' isolated' : ''} watching=${watchDir}`);
     const res = spawnSync(argv[0], argv.slice(1), { stdio: 'inherit', env });
 
     const produced = discoverSessions(watchDir).filter((s) => {
@@ -455,7 +455,7 @@ program
     });
     const sessionIds = [...new Set([...preTagged, ...produced.map((s) => s.sessionId)])];
 
-    // Local attribution for `ccopt analyze`/`ccopt sync` on this machine.
+    // Local attribution for `effigent analyze`/`effigent sync` on this machine.
     // Per-session tag files — safe under concurrent wrappers.
     if (sessionIds.length > 0) tagSessions(sessionIds, opts.agent);
 
@@ -465,13 +465,13 @@ program
       for (const s of produced) {
         const r = await uploadSessionFile({ server, apiKey }, s.path, s.sessionId, opts.agent);
         if (r.ok) ok++;
-        else console.error(`[ccopt] upload failed for ${s.sessionId}: HTTP ${r.status} ${r.detail ?? ''}`);
+        else console.error(`[effigent] upload failed for ${s.sessionId}: HTTP ${r.status} ${r.detail ?? ''}`);
       }
-      console.error(`[ccopt] uploaded ${ok}/${produced.length} session(s) as ${opts.agent}`);
+      console.error(`[effigent] uploaded ${ok}/${produced.length} session(s) as ${opts.agent}`);
     }
 
     // Isolated transcripts would vanish with the temp dir — preserve them locally
-    // so `ccopt analyze` still sees them (defaultSources includes CCOPT_STORE).
+    // so `effigent analyze` still sees them (defaultSources includes CCOPT_STORE).
     if (isoDir) {
       for (const s of produced) {
         const rel = s.path.slice(watchDir.length + 1);
@@ -484,8 +484,8 @@ program
 
     console.error(
       sessionIds.length > 0
-        ? `[ccopt] attributed ${sessionIds.length} session(s) to ${opts.agent}`
-        : '[ccopt] no sessions observed during the run',
+        ? `[effigent] attributed ${sessionIds.length} session(s) to ${opts.agent}`
+        : '[effigent] no sessions observed during the run',
     );
     process.exitCode = res.status ?? 1;
   });
@@ -495,14 +495,14 @@ agentCmd
   .command('add <name>')
   .description('Register an agent in your workspace and save its scoped capture key')
   .option('--harness <name>', 'harness label (e.g. claude-code, codex, hermes, langgraph)')
-  .option('--server <url>', 'ccopt server base URL (default: ccopt login config)')
-  .option('--key <apiKey>', 'tenant OWNER key (default: ccopt login config)')
+  .option('--server <url>', 'effigent server base URL (default: effigent login config)')
+  .option('--key <apiKey>', 'tenant OWNER key (default: effigent login config)')
   .action(async (name: string, opts) => {
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
-    const apiKey: string | undefined = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+    const apiKey: string | undefined = opts.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
     if (!server || !apiKey) {
-      console.error('No server/key: run `ccopt login` first (owner key), or pass --server/--key.');
+      console.error('No server/key: run `effigent login` first (owner key), or pass --server/--key.');
       process.exitCode = 2;
       return;
     }
@@ -520,7 +520,7 @@ agentCmd
     }
     if (!res.ok) {
       console.error(`Agent registration failed (HTTP ${res.status}): ${await res.text()}`);
-      if (res.status === 403) console.error('Use your tenant key (from `ccopt login`), not an agent-scoped capture key.');
+      if (res.status === 403) console.error('Use your tenant key (from `effigent login`), not an agent-scoped capture key.');
       process.exitCode = 1;
       return;
     }
@@ -530,7 +530,7 @@ agentCmd
     const base = server.replace(/\/$/, '');
     console.log(`✓ registered agent '${name}' — scoped key saved to ${CONFIG_PATH}\n`);
     console.log('Capture options for this agent:');
-    console.log(`  • Claude Code (this machine):  ccopt install claude --agent ${name}`);
+    console.log(`  • Claude Code (this machine):  effigent install claude --agent ${name}`);
     console.log('  • SDK / OpenLLMetry agent — export before running it:');
     console.log(`      export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${base}/v1/traces`);
     console.log('      export OTEL_EXPORTER_OTLP_PROTOCOL=http/json');
@@ -545,7 +545,7 @@ agentCmd
     const config = loadConfig();
     const agents = Object.entries(config.agents ?? {});
     if (agents.length === 0) {
-      console.log('No agents registered here yet — run `ccopt agent add <name>`.');
+      console.log('No agents registered here yet — run `effigent agent add <name>`.');
       return;
     }
     for (const [name, a] of agents) {
@@ -590,9 +590,9 @@ const OTEL_HARNESSES: Record<string, { title: string; render: (base: string, key
 function printOtelInstall(harness: string, agentName: string): void {
   const config = loadConfig();
   const entry = config.agents?.[agentName];
-  const server: string | undefined = process.env.CCOPT_SERVER ?? config.server;
+  const server: string | undefined = (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
   if (!entry || !server) {
-    console.error(`Agent '${agentName}' not registered here — run \`ccopt agent add ${agentName}\` first.`);
+    console.error(`Agent '${agentName}' not registered here — run \`effigent agent add ${agentName}\` first.`);
     process.exitCode = 2;
     return;
   }
@@ -606,7 +606,7 @@ function printOtelInstall(harness: string, agentName: string): void {
 installCmd
   .command('otel')
   .description('Print a ready-to-paste OTel capture setup (key filled in) for any harness')
-  .requiredOption('--agent <name>', 'registered agent name (from `ccopt agent add`)')
+  .requiredOption('--agent <name>', 'registered agent name (from `effigent agent add`)')
   .option('--harness <name>', `one of: ${Object.keys(OTEL_HARNESSES).join(', ')}`, 'generic')
   .action((opts) => printOtelInstall(opts.harness, opts.agent));
 
@@ -614,18 +614,18 @@ for (const harness of ['codex', 'python', 'node'] as const) {
   installCmd
     .command(harness)
     .description(`Print the ${OTEL_HARNESSES[harness].title} setup for a registered agent`)
-    .requiredOption('--agent <name>', 'registered agent name (from `ccopt agent add`)')
+    .requiredOption('--agent <name>', 'registered agent name (from `effigent agent add`)')
     .action((opts) => printOtelInstall(harness, opts.agent));
 }
 
 installCmd
   .command('claude')
   .description('Install a Claude Code SessionEnd hook that uploads each finished session (event-driven; no polling)')
-  .requiredOption('--agent <name>', 'registered agent name (from `ccopt agent add`)')
+  .requiredOption('--agent <name>', 'registered agent name (from `effigent agent add`)')
   .action((opts) => {
     const config = loadConfig();
     if (!config.agents?.[opts.agent]) {
-      console.error(`Agent '${opts.agent}' not found in config — run \`ccopt agent add ${opts.agent}\` first.`);
+      console.error(`Agent '${opts.agent}' not found in config — run \`effigent agent add ${opts.agent}\` first.`);
       process.exitCode = 2;
       return;
     }
@@ -641,7 +641,7 @@ installCmd
       }
     }
     // Absolute node + cli paths: hooks run without nvm/homebrew PATH. The scoped
-    // key is NOT written here — claude-hook reads it from ~/.ccopt/config.json.
+    // key is NOT written here — claude-hook reads it from ~/.effigent/config.json.
     const command = `${process.execPath} ${resolve(process.argv[1])} claude-hook --agent ${opts.agent}`;
     const hooks = (settings.hooks ??= {}) as Record<string, unknown>;
     const sessionEnd = (Array.isArray(hooks.SessionEnd) ? hooks.SessionEnd : []) as Array<{
@@ -659,7 +659,7 @@ installCmd
     mkdirSync(dirname(settingsPath), { recursive: true });
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
     console.log(`✓ installed SessionEnd hook for '${opts.agent}' in ${settingsPath}`);
-    console.log('Each finished Claude Code session now uploads automatically — no polling; key stays in ~/.ccopt/config.json.');
+    console.log('Each finished Claude Code session now uploads automatically — no polling; key stays in ~/.effigent/config.json.');
   });
 
 program
@@ -669,9 +669,9 @@ program
   .action(async (opts) => {
     const config = loadConfig();
     const entry = config.agents?.[opts.agent];
-    const server: string | undefined = process.env.CCOPT_SERVER ?? config.server;
+    const server: string | undefined = (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
     if (!entry || !server) {
-      console.error(`[ccopt] claude-hook: agent '${opts.agent}' or server not configured`);
+      console.error(`[effigent] claude-hook: agent '${opts.agent}' or server not configured`);
       process.exitCode = 2;
       return;
     }
@@ -679,21 +679,21 @@ program
     try {
       payload = JSON.parse(readFileSync(0, 'utf8')) as { session_id?: string; transcript_path?: string };
     } catch {
-      console.error('[ccopt] claude-hook: could not read hook JSON from stdin');
+      console.error('[effigent] claude-hook: could not read hook JSON from stdin');
       process.exitCode = 1;
       return;
     }
     const { session_id: sessionId, transcript_path: transcriptPath } = payload;
     if (!sessionId || !transcriptPath || !existsSync(transcriptPath)) {
-      console.error('[ccopt] claude-hook: missing/unreadable session_id or transcript_path');
+      console.error('[effigent] claude-hook: missing/unreadable session_id or transcript_path');
       process.exitCode = 1;
       return;
     }
     const r = await uploadSessionFile({ server, apiKey: entry.key }, transcriptPath, sessionId, opts.agent);
     console.error(
       r.ok
-        ? `[ccopt] uploaded session ${sessionId} as ${opts.agent}`
-        : `[ccopt] upload failed (HTTP ${r.status}) ${r.detail ?? ''}`,
+        ? `[effigent] uploaded session ${sessionId} as ${opts.agent}`
+        : `[effigent] upload failed (HTTP ${r.status}) ${r.detail ?? ''}`,
     );
     process.exitCode = r.ok ? 0 : 1;
   });

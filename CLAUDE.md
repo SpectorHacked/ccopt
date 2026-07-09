@@ -20,7 +20,7 @@ npm workspaces (`packages/*`). TypeScript throughout; ESM (`.js` import specifie
 |---|---|---|
 | `@ccopt/core` | Pure TS engine: transcript/OTel → `Run` → `RunGraph` (DAG), clustering, cost, taxonomy, **determinism scoring**. No I/O. | library |
 | `@ccopt/server` | Fastify API: ingest, agents/keys, insights (LLM), analyze, reports, viewers. **Being retired** (see §6). | Node (Render) |
-| `@ccopt/cli` | `ccopt` CLI: `login`, `agent add/list`, `run` (wrap ANY agent command), `install claude` (SessionEnd hook) + `install otel/codex/python/node` (key-filled OTel recipes per harness — table-driven, one entry per new harness), `claude-hook`, upload. | Node |
+| `@ccopt/cli` | `effigent` CLI (npm: `effigent`): `login`, `agent add/list`, `run` (wrap ANY agent command), `install claude` (SessionEnd hook) + `install otel/codex/python/node` (key-filled OTel recipes per harness — table-driven, one entry per new harness), `claude-hook`, upload. | Node |
 | `@ccopt/dashboard` | Next.js App Router dashboard + its own API routes. The product UI. | Vercel |
 | `@ccopt/site` | Marketing site, Next.js **static export** (`output: 'export'`). Pages: `/` (landing), `/developers` (full per-harness install guide), `/security` (redaction + posture). Endpoints are env-driven: `NEXT_PUBLIC_COLLECTOR_URL` / `NEXT_PUBLIC_DASHBOARD_URL` (set as GitHub `prod` environment Variables `COLLECTOR_URL`/`DASHBOARD_URL`, injected in the deploy workflow; unset → explicit `<placeholder>`) — never hardcode domains. | S3 + CloudFront |
 
@@ -165,7 +165,7 @@ The engine bits these need are **vendored** in `dashboard/src/lib/engine/`
 (types/cost/transcript/otel/redact/jsonb — copies of core; keep in sync).
 `lib/agent-auth.ts` holds `authenticateKey` + `persistRun` (redaction + jsonb
 sanitizing at the single write choke point; `blob_path='inline'`, no blob store).
-The CLI is published to npm as **`ccopt`** (single-file esbuild CJS bundle, core
+The CLI is published to npm as **`effigent`** (bin: `effigent`; config `~/.effigent`; keys minted `eff_`, legacy `cck_` accepted) (single-file esbuild CJS bundle, core
 inlined — no workspace dep). `packages/server` remains as reference/self-host only.
 
 ---

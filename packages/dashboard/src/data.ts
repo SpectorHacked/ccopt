@@ -241,9 +241,9 @@ export interface InstallMethod {
 export function installStep1(base: string, tenantKey?: string) {
   return {
     label: 'Log in with your workspace key, then register the agent',
-    code: `npm i -g ccopt
-ccopt login --server ${base || '<dashboard-url>'} --key ${tenantKey ?? '<workspace-key>'}
-ccopt agent add my-agent            # → prints a scoped capture key`,
+    code: `npm i -g effigent
+effigent login --server ${base || '<dashboard-url>'} --key ${tenantKey ?? '<workspace-key>'}
+effigent agent add my-agent            # → prints a scoped capture key`,
   };
 }
 
@@ -254,12 +254,12 @@ export function installMethods(base: string): InstallMethod[] {
   {
     key: 'claude', name: 'Claude Code', icon: 'spark', tint: 'var(--purple)', tag: 'Hook · zero-touch',
     blurb: 'Event-driven capture — every finished session uploads automatically. No polling, no code changes, key stays local.',
-    steps: [{ label: 'Install the SessionEnd hook', code: `ccopt install claude --agent my-agent
-# writes a SessionEnd hook into ~/.claude/settings.json (key stays in ~/.ccopt)` }],
+    steps: [{ label: 'Install the SessionEnd hook', code: `effigent install claude --agent my-agent
+# writes a SessionEnd hook into ~/.claude/settings.json (key stays in ~/.effigent)` }],
   },
   {
     key: 'codex', name: 'OpenAI Codex', icon: 'cpu', tint: 'var(--blue)', tag: 'OTel native',
-    blurb: 'Codex emits native OpenTelemetry — point it at the collector with your scoped key. `ccopt install codex` prints this with the key filled in.',
+    blurb: 'Codex emits native OpenTelemetry — point it at the collector with your scoped key. `effigent install codex` prints this with the key filled in.',
     steps: [{ label: 'Export before launching Codex', code: `export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${TRACES}
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 export OTEL_EXPORTER_OTLP_COMPRESSION=none

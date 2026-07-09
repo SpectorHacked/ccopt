@@ -1,10 +1,10 @@
 {
-  "name": "ccopt",
+  "name": "effigent",
   "version": "0.1.0",
-  "description": "Optimizer CLI — capture AI-agent runs (Claude Code, Codex, any OTel agent) and send them to your Optimizer workspace.",
+  "description": "effigent — the Optimizer CLI: capture AI-agent runs (Claude Code, Codex, any OTel agent) and send them to your Optimizer workspace.",
   "type": "module",
   "bin": {
-    "ccopt": "dist/index.cjs"
+    "effigent": "dist/index.cjs"
   },
   "files": [
     "dist"

@@ -19,7 +19,7 @@ export async function resolveTenant({ userId, orgId }: { userId: string; orgId: 
   );
   const tid = t.rows[0].id;
   // A default owner api key so agents can ingest under this tenant.
-  const apiKey = `cck_${randomBytes(24).toString('hex')}`;
+  const apiKey = `eff_${randomBytes(24).toString('hex')}`;
   await pool
     .query("insert into api_keys (tenant_id, key_hash, label, role) values ($1,$2,'dashboard','owner')", [tid, hashKey(apiKey)])
     .catch(() => {});

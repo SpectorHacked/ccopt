@@ -35,8 +35,8 @@ export async function POST(req: Request) {
     if (body.label && typeof body.label === 'string') label = body.label.slice(0, 60);
   } catch { /* empty body is fine */ }
 
-  // Owner key: full workspace access — this is the key `ccopt login` takes.
-  const apiKey = `cck_${randomBytes(24).toString('hex')}`;
+  // Owner key: full workspace access — this is the key `effigent login` takes.
+  const apiKey = `eff_${randomBytes(24).toString('hex')}`;
   const hash = createHash('sha256').update(apiKey).digest('hex');
   await pool.query(
     `insert into api_keys (tenant_id, key_hash, label, role) values ($1,$2,$3,'owner')`,
