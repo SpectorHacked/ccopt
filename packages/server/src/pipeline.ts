@@ -4,6 +4,7 @@
  * and nightly; never real-time.
  */
 
+import { gzipSync } from 'node:zlib';
 import { analyzeRuns, renderReportHtml, type Run } from '@ccopt/core';
 import type { Db } from './db.js';
 import type { BlobStore } from './blobs.js';
@@ -50,8 +51,8 @@ export async function runPipeline(
       [tenantId, report.windowDays, JSON.stringify(report.totals), JSON.stringify(report)],
     );
     const reportId = reportRes.rows[0].id;
-    const htmlPath = `${tenantId}/reports/${reportId}.html`;
-    await blobs.put(htmlPath, html);
+    const htmlPath = `${tenantId}/reports/${reportId}.html.gz`;
+    await blobs.put(htmlPath, gzipSync(Buffer.from(html)));
     await client.query(`update reports set html_blob_path = $2 where id = $1`, [reportId, htmlPath]);
 
     for (const c of clusters) {

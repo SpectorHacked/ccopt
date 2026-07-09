@@ -202,7 +202,9 @@ app.post('/api/v1/ingest', async (req, reply) => {
   const effectiveAgentId = auth.agentName ?? agentIdHeader;
 
   const blobPath = `${auth.tenantId}/sessions/${sessionId}.jsonl.gz`;
-  await blobs.put(blobPath, req.headers['content-encoding'] === 'gzip' ? raw : Buffer.from(jsonl));
+  // Always store gzipped at rest — readers gunzip on demand. If the client
+  // didn't pre-compress, we compress it here so nothing is ever stored raw.
+  await blobs.put(blobPath, req.headers['content-encoding'] === 'gzip' ? raw : gzipSync(Buffer.from(jsonl)));
 
   const run: Run | null = parseTranscript(jsonl, { agentId: effectiveAgentId });
   if (!run) {
@@ -714,7 +716,13 @@ app.get('/r/:reportId', async (req, reply) => {
     [reportId],
   );
   if (rows.length === 0) return reply.code(404).send('not found');
-  const html = await blobs.get(rows[0].html_blob_path);
+  const stored = await blobs.get(rows[0].html_blob_path);
+  let html: Buffer;
+  try {
+    html = gunzipSync(stored); // reports are stored gzipped
+  } catch {
+    html = stored; // tolerate older reports written uncompressed
+  }
   return reply.type('text/html').send(html);
 });
 
