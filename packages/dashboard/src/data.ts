@@ -11,41 +11,56 @@ export interface Flow { name: string; optimized?: boolean; metrics: string[]; le
 
 export interface Kpi {
   key: string; label: string; icon: string; tint: string;
-  value: string; delta: string; dir: 'up' | 'down'; tone: 'good' | 'bad' | 'neutral';
+  kind: 'pct' | 'usd' | 'int'; value: number;
+  delta: string; dir: 'up' | 'down'; tone: 'good' | 'bad' | 'neutral';
   spark: number[];
 }
 
+/** Sentinel for the "all agents" filter option. */
+export const ALL_AGENTS = '__all__';
+
+/** Demo agents shown in the filter when not signed in (live mode pulls the real list). */
+export const demoAgents = ['billing-assistant', 'repo-explorer', 'support-triage', 'ci-fixer', 'docs-writer'];
+
+// Trimmed for now — only the shipped surfaces. Re-add groups as engines land.
 export const nav = [
   { item: 'Home', icon: 'home', active: true },
-  { group: 'Observability', items: [
-    ['Executions', 'activity'], ['Traces', 'route'], ['Performance', 'gauge'], ['Costs', 'dollar'], ['Models', 'grid'],
-  ] },
   { group: 'Optimization', items: [
-    ['Recommendations', 'bulb'], ['Determinism', 'scale'], ['Tool Synthesis', 'wrench'],
-    ['Caches', 'database'], ['Model Routing', 'route'], ['Context Optimization', 'layers'],
+    ['Tool Synthesis', 'wrench'],
   ] },
   { group: 'Knowledge', items: [
-    ['Knowledge Graph', 'graph'], ['Repository Map', 'map'], ['Patterns', 'grid'],
-  ] },
-  { group: 'Governance', items: [
-    ['Validation', 'check'], ['Rollbacks', 'rotate'], ['Audit Logs', 'list'], ['Security', 'shield'],
+    ['Knowledge Graph', 'graph'], ['Repository Map', 'map'],
   ] },
 ] as const;
 
 export const kpis: Kpi[] = [
-  { key: 'token', label: 'Token Reduction', icon: 'layers', tint: 'var(--purple)', value: '62.4%',
+  { key: 'token', label: 'Token Reduction', icon: 'layers', tint: 'var(--purple)', kind: 'pct', value: 62.4,
     delta: '1.3M tokens', dir: 'down', tone: 'good', spark: [8, 6, 9, 7, 11, 9, 13, 10, 14, 12] },
-  { key: 'latency', label: 'Latency Reduction', icon: 'gauge', tint: 'var(--blue)', value: '48.7%',
+  { key: 'latency', label: 'Latency Reduction', icon: 'gauge', tint: 'var(--blue)', kind: 'pct', value: 48.7,
     delta: '2.4 min', dir: 'down', tone: 'good', spark: [5, 7, 6, 9, 8, 11, 9, 12, 10, 13] },
-  { key: 'cost', label: 'Cost Savings', icon: 'dollar', tint: 'var(--green)', value: '$18,732',
+  { key: 'cost', label: 'Cost Savings', icon: 'dollar', tint: 'var(--green)', kind: 'usd', value: 18732,
     delta: '62.1%', dir: 'down', tone: 'good', spark: [6, 8, 7, 10, 9, 8, 12, 11, 14, 13] },
-  { key: 'cache', label: 'Cache Hit Rate', icon: 'database', tint: 'var(--gold)', value: '73.8%',
+  { key: 'cache', label: 'Cache Hit Rate', icon: 'database', tint: 'var(--gold)', kind: 'pct', value: 73.8,
     delta: '12.4%', dir: 'up', tone: 'good', spark: [7, 9, 8, 11, 10, 14, 12, 16, 13, 15] },
-  { key: 'det', label: 'Deterministic Ops', icon: 'scale', tint: 'var(--purple)', value: '1,243',
+  { key: 'det', label: 'Deterministic Ops', icon: 'scale', tint: 'var(--purple)', kind: 'int', value: 1243,
     delta: '245', dir: 'up', tone: 'good', spark: [4, 6, 5, 8, 7, 9, 8, 11, 10, 12] },
-  { key: 'ctx', label: 'Context Reduction', icon: 'grid', tint: 'var(--cyan)', value: '68.9%',
+  { key: 'ctx', label: 'Context Reduction', icon: 'grid', tint: 'var(--cyan)', kind: 'pct', value: 68.9,
     delta: '2.1M tokens', dir: 'down', tone: 'good', spark: [9, 7, 10, 8, 11, 9, 12, 10, 13, 11] },
 ];
+
+/** Deterministic per-agent factor so the agent filter visibly rescopes the (demo) metrics. */
+export function agentFactor(agent: string): number {
+  if (!agent || agent === ALL_AGENTS) return 1;
+  let h = 0;
+  for (let i = 0; i < agent.length; i++) h = (h * 31 + agent.charCodeAt(i)) >>> 0;
+  return 0.18 + (h % 42) / 100; // 0.18 .. 0.59
+}
+
+export function formatKpi(kind: Kpi['kind'], value: number): string {
+  if (kind === 'pct') return `${value.toFixed(1)}%`;
+  if (kind === 'usd') return `$${Math.round(value).toLocaleString('en-US')}`;
+  return Math.round(value).toLocaleString('en-US');
+}
 
 export const flowOriginal: Flow = {
   name: 'Original Execution',

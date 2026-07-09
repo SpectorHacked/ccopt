@@ -1,8 +1,9 @@
-import { kpis } from '../data.ts';
+import { kpis, agentFactor, formatKpi } from '../data.ts';
 import { Ic } from '../icons.tsx';
 import { Sparkline } from '../charts.tsx';
 
-export function Kpis() {
+export function Kpis({ agent }: { agent: string }) {
+  const f = agentFactor(agent);
   return (
     <div className="kpis">
       {kpis.map((k) => (
@@ -13,7 +14,7 @@ export function Kpis() {
             </span>
             {k.label}
           </div>
-          <div className="kpi-val tnum">{k.value}</div>
+          <div className="kpi-val tnum">{formatKpi(k.kind, k.value * f)}</div>
           <div className="kpi-foot">
             <span className={`delta ${k.tone}`}>
               {k.dir === 'down' ? '↓' : '↑'} {k.delta}
