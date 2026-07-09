@@ -63,36 +63,103 @@ export function formatKpi(kind: Kpi['kind'], value: number): string {
   return Math.round(value).toLocaleString('en-US');
 }
 
-export const flowOriginal: Flow = {
-  name: 'Original Execution',
-  metrics: ['28 steps', '14.2s', '189K tokens', '$2.31'],
-  levels: [
-    [{ label: 'User Request' }],
-    [{ label: 'Planner (Claude-3.5)' }],
-    [{ label: 'File Search', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }, { label: 'File Search', kind: 'search' }],
-    [{ label: 'LLM Call', kind: 'llm' }, { label: 'File Search', kind: 'search' }, { label: 'LLM Call', kind: 'llm' },
-     { label: 'File Search', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }],
-    [{ label: 'LLM Call', kind: 'llm' }, { label: 'LLM Call', kind: 'llm' }, { label: 'LLM Call', kind: 'llm' },
-     { label: 'File Search', kind: 'search' }],
-    [{ label: 'Response' }],
-  ],
+/** Build a flow with the User Request / Response endpoints added automatically. */
+function mkFlow(name: string, optimized: boolean, metrics: string[], mid: FlowNode[][]): Flow {
+  return { name, optimized, metrics, levels: [[{ label: 'User Request' }], ...mid, [{ label: 'Response' }]] };
+}
+const tool = (label: string): FlowNode => ({ label, sub: '(Synthesized Tool)', kind: 'tool' });
+
+interface FlowPair { original: Flow; optimized: Flow }
+
+/** Per-agent execution graphs (demo/seed) — grounded in each seed agent's real
+ *  tool set so the Overview graph fills out and reacts to the agent filter. */
+export const flowsByAgent: Record<string, FlowPair> = {
+  'invoice-reconciliation': {
+    original: mkFlow('Original Execution', false, ['24 steps', '12.4s', '164K tokens', '$2.10'], [
+      [{ label: 'Planner (Claude-Sonnet-4)', kind: 'llm' }],
+      [{ label: 'read_file', kind: 'search' }, { label: 'validate_schema', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'tax_rate', kind: 'llm' }, { label: 'fx_convert', kind: 'llm' }, { label: 'LLM Call', kind: 'llm' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'LLM Call', kind: 'llm' }, { label: 'LLM Call', kind: 'llm' }],
+    ]),
+    optimized: mkFlow('Optimized Execution', true, ['9 steps', '3.0s', '41K tokens', '$0.36'], [
+      [{ label: 'Knowledge Graph Lookup', kind: 'kg' }],
+      [tool('reconcileBatch()'), tool('taxRate()'), tool('fxConvert()')],
+      [{ label: 'Small Model (Claude-Haiku-4)' }],
+    ]),
+  },
+  'repo-explorer': {
+    original: mkFlow('Original Execution', false, ['28 steps', '14.2s', '189K tokens', '$2.31'], [
+      [{ label: 'Planner (Claude-Sonnet-4)', kind: 'llm' }],
+      [{ label: 'grep', kind: 'search' }, { label: 'read_file', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }, { label: 'read_file', kind: 'search' }],
+      [{ label: 'LLM Call', kind: 'llm' }, { label: 'find_refs', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'LLM Call', kind: 'llm' }],
+    ]),
+    optimized: mkFlow('Optimized Execution', true, ['9 steps', '3.1s', '45K tokens', '$0.42'], [
+      [{ label: 'Knowledge Graph Lookup', kind: 'kg' }],
+      [tool('extractImports()'), tool('findRefs()'), tool('analyzeDeps()')],
+      [{ label: 'Small Model (GPT-4o-mini)' }],
+    ]),
+  },
+  'support-triage': {
+    original: mkFlow('Original Execution', false, ['19 steps', '9.1s', '120K tokens', '$1.42'], [
+      [{ label: 'Planner (Claude-Sonnet-4)', kind: 'llm' }],
+      [{ label: 'fetch_ticket', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'classify_tier', kind: 'llm' }, { label: 'search_kb', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'LLM Call', kind: 'llm' }],
+    ]),
+    optimized: mkFlow('Optimized Execution', true, ['7 steps', '2.4s', '33K tokens', '$0.31'], [
+      [tool('classifyTier()'), { label: 'KB Cache', kind: 'kg' }],
+      [{ label: 'Small Model (GPT-4o)' }],
+    ]),
+  },
+  'ci-fixer': {
+    original: mkFlow('Original Execution', false, ['17 steps', '21.0s', '98K tokens', '$1.18'], [
+      [{ label: 'Planner (Claude-Sonnet-4)', kind: 'llm' }],
+      [{ label: 'read_logs', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'run_tests', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'apply_patch', kind: 'tool' }],
+    ]),
+    optimized: mkFlow('Optimized Execution', true, ['11 steps', '8.4s', '52K tokens', '$0.61'], [
+      [{ label: 'Planner (Claude-Sonnet-4)', kind: 'llm' }],
+      [tool('selectTests()'), { label: 'read_logs', kind: 'search' }],
+      [{ label: 'run_tests', kind: 'search' }],
+      [tool('proposePatch()')],
+    ]),
+  },
+  'docs-writer': {
+    original: mkFlow('Original Execution', false, ['14 steps', '11.2s', '142K tokens', '$1.05'], [
+      [{ label: 'Planner (GPT-4o)', kind: 'llm' }],
+      [{ label: 'fetch_spec', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'search_examples', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'LLM Call', kind: 'llm' }],
+    ]),
+    optimized: mkFlow('Optimized Execution', true, ['8 steps', '4.6s', '61K tokens', '$0.34'], [
+      [{ label: 'Knowledge Graph Lookup', kind: 'kg' }],
+      [tool('docTemplate()'), { label: 'search_examples', kind: 'search' }],
+      [{ label: 'Small Model (GPT-4o-mini)' }],
+    ]),
+  },
+  'data-pipeline': {
+    original: mkFlow('Original Execution', false, ['12 steps', '48.0s', '54K tokens', '$0.72'], [
+      [{ label: 'Planner (Claude-Sonnet-4)', kind: 'llm' }],
+      [{ label: 'read_schema', kind: 'search' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'transform', kind: 'tool' }, { label: 'LLM Call', kind: 'llm' }],
+      [{ label: 'load', kind: 'tool' }, { label: 'verify', kind: 'llm' }],
+    ]),
+    optimized: mkFlow('Optimized Execution', true, ['6 steps', '39.0s', '8K tokens', '$0.11'], [
+      [tool('transformDeterministic()')],
+      [{ label: 'load', kind: 'tool' }, tool('verifyCounts()')],
+    ]),
+  },
 };
 
-export const flowOptimized: Flow = {
-  name: 'Optimized Execution',
-  optimized: true,
-  metrics: ['9 steps', '3.1s', '45K tokens', '$0.42'],
-  levels: [
-    [{ label: 'User Request' }],
-    [{ label: 'Planner (Claude-3.5)' }],
-    [{ label: 'Knowledge Graph Lookup', kind: 'kg' }],
-    [{ label: 'extractImports()', sub: '(Synthesized Tool)', kind: 'tool' },
-     { label: 'findRoutes()', sub: '(Synthesized Tool)', kind: 'tool' },
-     { label: 'analyzeDeps()', sub: '(Synthesized Tool)', kind: 'tool' }],
-    [{ label: 'Small Model (GPT-4o-mini)' }],
-    [{ label: 'Response' }],
-  ],
-};
+const defaultFlows: FlowPair = flowsByAgent['repo-explorer'];
+
+/** Flows for the selected agent; a representative pair for "all agents". */
+export function flowsForAgent(agent: string): FlowPair {
+  if (agent && agent !== ALL_AGENTS && flowsByAgent[agent]) return flowsByAgent[agent];
+  return defaultFlows;
+}
 
 export const graphLegend = [
   { label: 'LLM Call', color: 'var(--red)' },

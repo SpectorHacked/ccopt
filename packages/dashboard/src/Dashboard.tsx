@@ -16,7 +16,7 @@ import { Ic } from '@/icons.tsx';
 import { ALL_AGENTS } from '@/data.ts';
 
 type View = 'overview' | 'sessions' | 'tools' | 'kg' | 'install' | 'session-detail';
-interface AgentInfo { agent_id: string; optimized: boolean }
+interface AgentInfo { agent_id: string; optimized: boolean; n_runs: number; total_cost_usd: string | number }
 
 const clerkAppearance = {
   elements: {
@@ -113,7 +113,9 @@ export function Dashboard() {
             </header>
 
             <div className="view-body">
-              {view === 'sessions' && <Sessions agent={agent} optimizedAgents={optimizedAgents} onOpen={openSession} />}
+              {view === 'sessions' && (
+                <Sessions agent={agent} agents={agents} optimizedAgents={optimizedAgents} onOpen={openSession} onSelectAgent={setAgent} />
+              )}
               {view === 'session-detail' && session && (
                 <SessionDetail sessionId={session.id} optimized={session.optimized} onBack={() => setView('sessions')} />
               )}
@@ -124,7 +126,7 @@ export function Dashboard() {
                   <Kpis agent={agent} />
                   <div className="mid">
                     <div className="mid-left">
-                      <ExecutionGraph />
+                      <ExecutionGraph agent={agent} />
                       <Bottom />
                     </div>
                     <Rail />

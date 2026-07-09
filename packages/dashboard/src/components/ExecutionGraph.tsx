@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { flowOriginal, flowOptimized, graphLegend, type Flow } from '../data.ts';
+import { flowsForAgent, graphLegend, ALL_AGENTS, type Flow } from '../data.ts';
 import { Ic } from '../icons.tsx';
 
 function FlowCol({ flow }: { flow: Flow }) {
@@ -23,8 +22,9 @@ function FlowCol({ flow }: { flow: Flow }) {
   );
 }
 
-export function ExecutionGraph() {
-  const [view, setView] = useState<'original' | 'optimized'>('optimized');
+export function ExecutionGraph({ agent }: { agent: string }) {
+  const { original, optimized } = flowsForAgent(agent);
+  const scoped = agent && agent !== ALL_AGENTS;
   return (
     <section className="panel panel-pad">
       <div className="graph-head">
@@ -33,20 +33,16 @@ export function ExecutionGraph() {
             <span className="panel-title">Execution Graph</span>
             <span className="badge-beta">BETA</span>
           </div>
-          <div className="panel-sub">Original vs Optimized execution flow</div>
-        </div>
-        <div className="toggle">
-          <button className={view === 'original' ? 'on' : ''} onClick={() => setView('original')}>Original</button>
-          <button className={view === 'optimized' ? 'on' : ''} onClick={() => setView('optimized')}>
-            <Ic n="spark" style={{ width: 13, height: 13 }} /> Optimized
-          </button>
+          <div className="panel-sub">
+            Original vs Optimized execution flow{scoped ? ` · ${agent}` : ' · representative agent'}
+          </div>
         </div>
       </div>
 
       <div className="flows">
-        <FlowCol flow={flowOriginal} />
+        <FlowCol flow={original} />
         <div className="arrow-mid"><Ic n="arrowRight" /></div>
-        <FlowCol flow={flowOptimized} />
+        <FlowCol flow={optimized} />
       </div>
 
       <div className="legend">
