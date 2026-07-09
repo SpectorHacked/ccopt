@@ -63,7 +63,7 @@ function Eyebrow({ hue, children }: { hue: string; children: ReactNode }) {
 }
 
 export default function Page() {
-  const [tab, setTab] = useState('cli');
+  const [tab, setTab] = useState(installTabs[0].key); // first tab — never a stale key
   const graph = buildRuntimeGraph();
 
   return (
