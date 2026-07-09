@@ -79,3 +79,11 @@ a:hover { color: oklch(0.4 0.14 250); }
   .engine-grid { grid-template-columns: 1fr 1fr !important; }
   .problems-grid { grid-template-columns: 1fr !important; }
 }
+
+/* Roboto Flex weight contrast — variable axis lets extremes coexist cheaply */
+body { font-weight: 400; }
+strong, b { font-weight: 750; }
+.nav-links a { font-weight: 560; }
+.btn { font-weight: 680; }
+.eyebrow { font-weight: 640; }
+h1, h2, h3 { font-weight: 700; }

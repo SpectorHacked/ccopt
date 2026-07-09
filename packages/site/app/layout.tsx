@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
-import { Source_Serif_4, Inter, IBM_Plex_Mono } from 'next/font/google';
+import { Source_Serif_4, Roboto_Flex, IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
 
 const serif = Source_Serif_4({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-serif', display: 'swap' });
-const sans = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-sans', display: 'swap' });
+// Roboto Flex is a variable font — the full weight axis (100–1000) ships in one
+// file, so light body text and very heavy headings contrast sharply.
+const sans = Roboto_Flex({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
 const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-mono', display: 'swap' });
 
 const description =
