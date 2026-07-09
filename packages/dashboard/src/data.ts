@@ -221,24 +221,36 @@ export const kgCoverage = {
 
 /** Install guide — how to put Optimizer on any autonomous agent. Grounded in the
  *  real collector: register a scoped key, then pick the capture method.
- *  Endpoints are env-driven (NEXT_PUBLIC_COLLECTOR_URL, inlined at build time) —
- *  never a hardcoded domain. Unset → an explicit placeholder. */
-const COLLECTOR = process.env.NEXT_PUBLIC_COLLECTOR_URL || '<collector-url>';
-const TRACES = `${COLLECTOR}/v1/traces`;
+ *
+ *  Endpoints are computed at RUNTIME from a distribution we control:
+ *  NEXT_PUBLIC_COLLECTOR_URL when set, else the dashboard's own origin
+ *  (window.location.origin — the Vercel URL today, the real domain later).
+ *  Never a hardcoded third-party domain. */
+export function collectorBase(): string {
+  if (process.env.NEXT_PUBLIC_COLLECTOR_URL) return process.env.NEXT_PUBLIC_COLLECTOR_URL;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return '';
+}
 
 export interface InstallMethod {
   key: string; name: string; icon: string; tint: string; tag: string; blurb: string;
   steps: { label: string; code: string }[];
 }
 
-export const installStep1 = {
-  label: 'Register the agent — one scoped key per agent',
-  code: `# with the ccopt CLI installed (private beta), register from your workspace
-ccopt login --server ${COLLECTOR} --key <tenant-key>
+/** Step 1 — with the user's real key interpolated once they mint one. */
+export function installStep1(base: string, tenantKey?: string) {
+  return {
+    label: 'Log in with your workspace key, then register the agent',
+    code: `# with the ccopt CLI installed (private beta), register from your workspace
+ccopt login --server ${base || '<dashboard-url>'} --key ${tenantKey ?? '<workspace-key>'}
 ccopt agent add my-agent            # → prints a scoped capture key`,
-};
+  };
+}
 
-export const installMethods: InstallMethod[] = [
+export function installMethods(base: string): InstallMethod[] {
+  const COLLECTOR = base || '<dashboard-url>';
+  const TRACES = `${COLLECTOR}/v1/traces`;
+  return [
   {
     key: 'claude', name: 'Claude Code', icon: 'spark', tint: 'var(--purple)', tag: 'Hook · zero-touch',
     blurb: 'Event-driven capture — every finished session uploads automatically. No polling, no code changes, key stays local.',
@@ -286,7 +298,8 @@ traceloop.initialize({
 export OPENAI_BASE_URL=${COLLECTOR}/proxy/v1
 export OPTIMIZER_KEY=<scoped-key>` }],
   },
-];
+  ];
+}
 
 export const routing = {
   rows: [

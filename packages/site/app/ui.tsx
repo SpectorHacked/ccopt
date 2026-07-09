@@ -1,6 +1,7 @@
 /** Shared chrome — nav, footer, code blocks. Same design language as the home page. */
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { DASHBOARD_URL } from './config';
 
 export function Nav({ cta = true }: { cta?: boolean }) {
   return (
@@ -15,11 +16,16 @@ export function Nav({ cta = true }: { cta?: boolean }) {
         <Link href="/developers">Developers</Link>
         <Link href="/security">Security</Link>
       </div>
-      {cta && (
-        <Link href="/developers" className="btn btn-primary" style={{ padding: '9px 18px', fontSize: 13.5, display: 'inline-block' }}>
-          Install in 2 minutes
-        </Link>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <a href={`${DASHBOARD_URL}/sign-in`} style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-2)', padding: '9px 12px' }}>
+          Log in
+        </a>
+        {cta && (
+          <Link href="/developers" className="btn btn-primary" style={{ padding: '9px 18px', fontSize: 13.5, display: 'inline-block' }}>
+            Install in 2 minutes
+          </Link>
+        )}
+      </div>
     </div>
   );
 }
