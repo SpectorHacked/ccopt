@@ -538,7 +538,86 @@ agentCmd
     console.log(`      export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer ${out.apiKey}"`);
   });
 
+agentCmd
+  .command('list')
+  .description('List agents registered from this machine (names, harness, key presence)')
+  .action(() => {
+    const config = loadConfig();
+    const agents = Object.entries(config.agents ?? {});
+    if (agents.length === 0) {
+      console.log('No agents registered here yet — run `ccopt agent add <name>`.');
+      return;
+    }
+    for (const [name, a] of agents) {
+      console.log(`  ${name.padEnd(28)} ${(a.harness ?? '—').padEnd(14)} key:${a.key ? '✓' : '✗'}  ${a.agentId}`);
+    }
+  });
+
 const installCmd = program.command('install').description('Wire up capture on this machine for a registered agent');
+
+/** OTLP env block for any OTel-capable harness, filled with the agent's real scoped key. */
+function otelEnv(base: string, key: string): string {
+  return [
+    `export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${base}/v1/traces`,
+    'export OTEL_EXPORTER_OTLP_PROTOCOL=http/json',
+    'export OTEL_EXPORTER_OTLP_COMPRESSION=none',
+    `export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer ${key}"`,
+  ].join('\n');
+}
+
+/** Per-harness capture recipes. Adding a harness = adding one entry here. */
+const OTEL_HARNESSES: Record<string, { title: string; render: (base: string, key: string) => string }> = {
+  codex: {
+    title: 'OpenAI Codex CLI (native OTel)',
+    render: (base, key) => `# Set before launching codex — it exports spans natively:\n${otelEnv(base, key)}\ncodex "your task"`,
+  },
+  python: {
+    title: 'Python agents — LangGraph / CrewAI / AutoGen / OpenAI Agents (OpenLLMetry)',
+    render: (base, key) =>
+      `pip install traceloop-sdk\n\n# once at startup — auto-instruments openai/anthropic + the frameworks:\nfrom traceloop.sdk import Traceloop\nTraceloop.init(\n    api_endpoint="${base}/v1/traces",\n    headers={"Authorization": "Bearer ${key}"},\n)`,
+  },
+  node: {
+    title: 'Node / TS agents (OpenLLMetry)',
+    render: (base, key) =>
+      `npm i @traceloop/node-server-sdk\n\n// before your agent runs — auto-instruments the openai/anthropic clients:\nimport * as traceloop from "@traceloop/node-server-sdk";\ntraceloop.initialize({\n  baseUrl: "${base}/v1/traces",\n  headers: { Authorization: "Bearer ${key}" },\n});`,
+  },
+  generic: {
+    title: 'Any OTel-capable agent',
+    render: (base, key) => otelEnv(base, key),
+  },
+};
+
+function printOtelInstall(harness: string, agentName: string): void {
+  const config = loadConfig();
+  const entry = config.agents?.[agentName];
+  const server: string | undefined = process.env.CCOPT_SERVER ?? config.server;
+  if (!entry || !server) {
+    console.error(`Agent '${agentName}' not registered here — run \`ccopt agent add ${agentName}\` first.`);
+    process.exitCode = 2;
+    return;
+  }
+  const recipe = OTEL_HARNESSES[harness] ?? OTEL_HARNESSES.generic;
+  const base = server.replace(/\/$/, '');
+  console.log(`# ${recipe.title} — capture as agent '${agentName}'\n`);
+  console.log(recipe.render(base, entry.key));
+  console.log('\n# Runs appear in the dashboard under this agent after the exporter flushes.');
+}
+
+installCmd
+  .command('otel')
+  .description('Print a ready-to-paste OTel capture setup (key filled in) for any harness')
+  .requiredOption('--agent <name>', 'registered agent name (from `ccopt agent add`)')
+  .option('--harness <name>', `one of: ${Object.keys(OTEL_HARNESSES).join(', ')}`, 'generic')
+  .action((opts) => printOtelInstall(opts.harness, opts.agent));
+
+for (const harness of ['codex', 'python', 'node'] as const) {
+  installCmd
+    .command(harness)
+    .description(`Print the ${OTEL_HARNESSES[harness].title} setup for a registered agent`)
+    .requiredOption('--agent <name>', 'registered agent name (from `ccopt agent add`)')
+    .action((opts) => printOtelInstall(harness, opts.agent));
+}
+
 installCmd
   .command('claude')
   .description('Install a Claude Code SessionEnd hook that uploads each finished session (event-driven; no polling)')

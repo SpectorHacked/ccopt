@@ -20,7 +20,7 @@ npm workspaces (`packages/*`). TypeScript throughout; ESM (`.js` import specifie
 |---|---|---|
 | `@ccopt/core` | Pure TS engine: transcript/OTel → `Run` → `RunGraph` (DAG), clustering, cost, taxonomy, **determinism scoring**. No I/O. | library |
 | `@ccopt/server` | Fastify API: ingest, agents/keys, insights (LLM), analyze, reports, viewers. **Being retired** (see §6). | Node (Render) |
-| `@ccopt/cli` | `ccopt` CLI: `login`, `agent add`, `install claude`, `claude-hook`, upload. | Node |
+| `@ccopt/cli` | `ccopt` CLI: `login`, `agent add/list`, `run` (wrap ANY agent command), `install claude` (SessionEnd hook) + `install otel/codex/python/node` (key-filled OTel recipes per harness — table-driven, one entry per new harness), `claude-hook`, upload. | Node |
 | `@ccopt/dashboard` | Next.js App Router dashboard + its own API routes. The product UI. | Vercel |
 | `@ccopt/site` | Marketing site, Next.js **static export** (`output: 'export'`). | S3 + CloudFront |
 
@@ -47,10 +47,15 @@ The data contract everything else depends on.
 - **`cost.ts`** — `usageCostUsd(model, usage)`: regex-priced per model tier (unknown model
   falls back to the sonnet tier — never zero, so a mis-guess only mildly mis-estimates).
 - **`taxonomy.ts`** — classifies tool names (unknown tools degrade to `side_effect`).
-- **`determinism.ts`** — **the brain's MVP.** `scoreDeterminism(graphs)` groups runs by L1
-  (shape), and for each node compares `canonicalValue` across runs:
-  `agreement = modalCount / runCount`, `score = round(agreement * 100)`,
-  `actionFor`: **≥90 → replace** (with a tool), **70–89 → cache**, **<70 → keep**.
+- **`determinism.ts`** — **the brain.** v1: `scoreDeterminism(graphs)` groups runs by L1
+  (shape) and scores per-node value agreement (≥90 replace / 70–89 cache / keep).
+  v2: `analyzeDeterminism(graphs)` adds three pattern detectors on top of exact
+  agreement — **memoize** (tool output is a pure function of its input: same input ⇒
+  same output, even when outputs differ across runs), **template** (value is structurally
+  fixed with volatile data slots ⇒ synthesize a parameterized tool; slots marked `⟨·⟩`),
+  and **route** (moderately stable LLM step ⇒ smaller model) — and weighs every score by
+  a **Wilson lower bound** so 2 agreeing runs never outrank 30. Analyzes every shape
+  cluster with support, not just the dominant one.
 
 ---
 
@@ -99,9 +104,12 @@ Reads Neon directly via a pooled `pg` client (`lib/db.ts`).
   `models`, `optimized` (guarded if `optimized_at` column absent).
 - `GET /api/v1/sessions[?agent=]` — the tenant's runs, newest first.
 - `GET /api/v1/sessions/[id]` — one run (with `parsed`) for the DAG deep-dive.
-- `GET /api/v1/insights[?agent=]` — **the determinism brain (MVP)**: per-agent
-  action items (replace / cache) with estimated removable cost. Lean reimpl of
-  `core/determinism.ts` over `runs.parsed` (no `core` dep on Vercel).
+- `GET /api/v1/insights[?agent=]` — **the determinism brain (v2)**: analyzes each
+  agent's **last 40 sessions** (SQL window function; fetches only `parsed->'steps'`,
+  so the scan stays bounded), clusters by execution shape, and emits per-node action
+  items — replace / **memoize** / **template** / **route** / cache — with Wilson-bound
+  confidence and estimated removable cost. Lean mirror of `core/determinism.ts`
+  `analyzeDeterminism` (no `core` dep on Vercel) — keep the two in sync.
 
 **Views** (`Dashboard.tsx` drives `view` state; sidebar in `data.ts` `nav`):
 - **Overview** — KPI tiles, per-agent **Execution Graph** (original vs optimized), and

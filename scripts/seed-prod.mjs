@@ -108,8 +108,8 @@ function program(kind, main, cheap, n) {
         tr('find_refs', `${6 + (n % 14)} references, ${2 + (n % 4)} in tests`, id('d'), 120),
         mt(`Impact: ${12 + (n % 30)} call sites in ${4 + (n % 8)} files; migration is mechanical for ${8 + (n % 10)} of them.`, main, 2240, 300, 900),
       ];
-    case 'ci':
-      return [
+    case 'ci': {
+      const steps = [
         mt('A CI job failed. Diagnose and propose a fix.', main, 1040, 150, 750),
         tu('read_logs', { run_id: 88000 + n, tail: 200 }, id('a'), 180),
         tr('read_logs', `FAIL ${pick(['auth.spec.ts', 'billing.spec.ts', 'graph.spec.ts'], n)} — expected 200, got 500`, id('a'), 160),
@@ -120,6 +120,16 @@ function program(kind, main, cheap, n) {
         tu('apply_patch', { file: 'lib/tenant.ts', hunk: '+ where clerk_ref is not null' }, id('c'), 120),
         tr('apply_patch', 'patched 1 file (+1 -1)', id('c'), 90),
       ];
+      // ~1 in 5 runs takes a retry path (flaky first test run) — a second
+      // execution shape, so the analyzer's multi-cluster handling is exercised.
+      if (n % 5 === 4) {
+        steps.splice(6, 0,
+          tu('run_tests', { file: pick(['auth.spec.ts', 'billing.spec.ts', 'graph.spec.ts'], n), grep: 'tenant', retry: true }, id('r'), 4100),
+          tr('run_tests', `1 failing: "resolves tenant on first login" — TypeError: cannot read 'id' of undefined`, id('r'), 4200),
+        );
+      }
+      return steps;
+    }
     case 'docs':
       return [
         mt('Write API reference docs for the new endpoints.', main, 900, 130, 700),
@@ -144,13 +154,14 @@ function program(kind, main, cheap, n) {
   }
 }
 
+// Counts sized so the top agents fill the brain's 40-session analysis window.
 const AGENTS = [
-  { name: 'invoice-reconciliation', kind: 'invoice', main: 'claude-sonnet-4', cheap: 'claude-haiku-4', count: 22 },
-  { name: 'support-triage', kind: 'triage', main: 'claude-sonnet-4', cheap: 'gpt-4o', count: 18 },
-  { name: 'repo-explorer', kind: 'repo', main: 'claude-sonnet-4', cheap: 'gpt-4o-mini', count: 20 },
-  { name: 'ci-fixer', kind: 'ci', main: 'claude-sonnet-4', cheap: 'claude-sonnet-4', count: 14 },
-  { name: 'docs-writer', kind: 'docs', main: 'gpt-4o', cheap: 'gpt-4o-mini', count: 12 },
-  { name: 'data-pipeline', kind: 'pipeline', main: 'claude-sonnet-4', cheap: 'claude-sonnet-4', count: 10 },
+  { name: 'invoice-reconciliation', kind: 'invoice', main: 'claude-sonnet-4', cheap: 'claude-haiku-4', count: 40 },
+  { name: 'support-triage', kind: 'triage', main: 'claude-sonnet-4', cheap: 'gpt-4o', count: 36 },
+  { name: 'repo-explorer', kind: 'repo', main: 'claude-sonnet-4', cheap: 'gpt-4o-mini', count: 34 },
+  { name: 'ci-fixer', kind: 'ci', main: 'claude-sonnet-4', cheap: 'claude-sonnet-4', count: 30 },
+  { name: 'docs-writer', kind: 'docs', main: 'gpt-4o', cheap: 'gpt-4o-mini', count: 24 },
+  { name: 'data-pipeline', kind: 'pipeline', main: 'claude-sonnet-4', cheap: 'claude-sonnet-4', count: 20 },
 ];
 
 function makeRun(agent, n) {

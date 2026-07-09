@@ -483,6 +483,10 @@ body {
 .ins-act { font-size: 10.5px; font-weight: 650; border-radius: 999px; padding: 2px 9px; }
 .ins-act.act-replace { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); border: 1px solid color-mix(in srgb, var(--green) 32%, transparent); }
 .ins-act.act-cache { color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); border: 1px solid color-mix(in srgb, var(--gold) 32%, transparent); }
+.ins-act.act-memoize { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 14%, transparent); border: 1px solid color-mix(in srgb, var(--cyan) 32%, transparent); }
+.ins-act.act-template { color: var(--blue); background: color-mix(in srgb, var(--blue) 14%, transparent); border: 1px solid color-mix(in srgb, var(--blue) 32%, transparent); }
+.ins-act.act-route { color: var(--purple); background: color-mix(in srgb, var(--purple) 14%, transparent); border: 1px solid color-mix(in srgb, var(--purple) 32%, transparent); }
+.ins-conf { color: var(--txt-4); font-size: 11px; }
 .ins-kind { font-size: 11px; color: var(--txt-3); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
 .ins-preview { margin-top: 4px; font-family: var(--mono); font-size: 11.5px; color: var(--txt-2); overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
