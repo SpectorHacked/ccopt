@@ -5,11 +5,26 @@ import { parseTranscript } from '@/lib/engine/transcript.ts';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+interface RunLike {
+  runId?: string;
+  agentId?: string;
+  models?: string[];
+  usageByModel?: Record<string, { inputTokens: number; outputTokens: number; cacheCreationInputTokens: number; cacheReadInputTokens: number }>;
+  costUsd?: number;
+  startedAt?: string;
+  endedAt?: string;
+  firstPrompt?: string;
+  finalOutput?: string;
+  steps?: Array<{ kind: string; name: string; payload: string; isError?: boolean; toolUseId?: string; timestamp?: string }>;
+}
+
 /**
- * Transcript ingest (Claude Code SessionEnd hook / `ccopt run` / `ccopt sync`).
- * Bearer cck_ key; gzipped (or plain) JSONL body; session id via header.
- * Note: request bodies are capped (~4.5 MB on Vercel) — transcripts are gzipped
- * by the CLI, which keeps almost all sessions well under it.
+ * Transcript ingest (Claude Code SessionEnd hook / `effigent run` / `effigent sync`).
+ * Bearer key; session id via header. Two body shapes:
+ *  - gzipped (or plain) JSONL transcript (default)
+ *  - `x-ccopt-format: run` + JSON — a Run the CLI pre-parsed locally, used when
+ *    the transcript exceeds the platform body cap (~4.5 MB). Same persist path,
+ *    same redaction; the scoped key still forces attribution.
  */
 export async function POST(req: Request) {
   const auth = await authenticateKey(req.headers.get('authorization'));
@@ -18,6 +33,35 @@ export async function POST(req: Request) {
   const sessionId = req.headers.get('x-ccopt-session-id') ?? '';
   if (!sessionId) return Response.json({ error: 'x-ccopt-session-id header required' }, { status: 400 });
   const agentIdHeader = req.headers.get('x-ccopt-agent-id') ?? undefined;
+
+  // Pre-parsed Run path (large sessions).
+  if (req.headers.get('x-ccopt-format') === 'run') {
+    let run: RunLike;
+    try {
+      run = (await req.json()) as RunLike;
+    } catch {
+      return Response.json({ error: 'invalid run JSON' }, { status: 400 });
+    }
+    if (!Array.isArray(run.steps) || run.steps.length === 0) {
+      return Response.json({ error: 'run.steps required' }, { status: 400 });
+    }
+    const effectiveAgentId = auth.agentName ?? agentIdHeader ?? run.agentId ?? 'unknown-agent';
+    const full = {
+      runId: run.runId ?? sessionId,
+      agentId: effectiveAgentId,
+      models: run.models ?? [],
+      usageByModel: run.usageByModel ?? {},
+      costUsd: typeof run.costUsd === 'number' ? run.costUsd : 0,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+      firstPrompt: run.firstPrompt,
+      finalOutput: run.finalOutput,
+      steps: run.steps,
+    };
+    // persistRun redacts + trims payloads — same choke point as the raw path.
+    await persistRun(auth, sessionId, full as Parameters<typeof persistRun>[2]);
+    return Response.json({ parsed: true, agentId: effectiveAgentId, costUsd: full.costUsd, preparsed: true });
+  }
 
   const raw = Buffer.from(await req.arrayBuffer());
   if (raw.length === 0) return Response.json({ error: 'binary body required' }, { status: 400 });
