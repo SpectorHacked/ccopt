@@ -12,6 +12,7 @@ import { Sessions } from '@/components/Sessions.tsx';
 import { SessionDetail } from '@/components/SessionDetail.tsx';
 import { ToolSynthesis } from '@/components/ToolSynthesis.tsx';
 import { KnowledgeGraph } from '@/components/KnowledgeGraph.tsx';
+import { KnowledgeLive } from '@/components/KnowledgeLive.tsx';
 import { Insights } from '@/components/Insights.tsx';
 import { OverviewLive } from '@/components/OverviewLive.tsx';
 import { Privacy } from '@/components/Privacy.tsx';
@@ -135,9 +136,7 @@ export function Dashboard() {
               {view === 'tools' && (demo ? <ToolSynthesis /> : (
                 <div className="dag-empty">No synthesized tools yet — they appear once Effigent compiles deterministic steps for your agents. Check <b>Insights</b> for the current candidates.</div>
               ))}
-              {view === 'kg' && (demo ? <KnowledgeGraph agent={agent} /> : (
-                <div className="dag-empty">The knowledge graph builds up as your agents run — nothing indexed for this workspace yet.</div>
-              ))}
+              {view === 'kg' && (demo ? <KnowledgeGraph agent={agent} /> : <KnowledgeLive agent={agent} />)}
               {view === 'insights' && <Insights agent={agent} />}
               {view === 'privacy' && <Privacy />}
               {view === 'overview' && (demo ? (

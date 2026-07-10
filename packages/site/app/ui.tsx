@@ -12,6 +12,7 @@ export function Nav({ cta = true }: { cta?: boolean }) {
       </Link>
       <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 36, fontSize: 14, color: 'var(--ink-2)', fontWeight: 500 }}>
         <Link href="/#how">How it works</Link>
+        <Link href="/docs">Docs</Link>
         <Link href="/developers">Developers</Link>
         <Link href="/pricing">Pricing</Link>
         <Link href="/security">Security</Link>
@@ -35,8 +36,10 @@ export function Footer() {
     <div className="site-footer" style={{ borderTop: '1px solid var(--line)', padding: '28px 56px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, fontSize: 13, color: 'var(--ink-4)' }}>
       <div>© 2026 Effigent — the compiler for AI agents</div>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+        <Link href="/docs">Docs</Link>
         <Link href="/developers">Developer guide</Link>
         <Link href="/pricing">Pricing</Link>
+        <Link href="/about">About</Link>
         <Link href="/security">Security</Link>
         <Link href="/terms">Terms</Link>
         <Link href="/privacy">Privacy</Link>

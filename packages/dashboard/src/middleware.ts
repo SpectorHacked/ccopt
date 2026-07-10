@@ -10,6 +10,7 @@ const isPublic = createRouteMatcher([
   '/v1/traces',
   '/api/v1/agents', // GET uses Clerk auth() internally; POST uses Bearer keys
   '/api/v1/reports',
+  '/api/v1/optimize', // CLI activation bundle — Bearer keys inside the handler
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

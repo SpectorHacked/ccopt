@@ -7,6 +7,7 @@ import { analyzeDeterminism, type ClusterAnalysis, type NodeAnalysis } from '@/l
 import { synthesizeTools } from '@/lib/engine/synthesize.ts';
 import { replayToolSpec } from '@/lib/engine/replay.ts';
 import { detectDrift } from '@/lib/engine/drift.ts';
+import { buildKnowledgeGraph } from '@/lib/engine/knowledge.ts';
 import type { RawStep, Run } from '@/lib/engine/types.ts';
 
 export const dynamic = 'force-dynamic';
@@ -251,6 +252,7 @@ export async function GET(req: Request) {
       opportunities,
       tools,
       drift,
+      knowledge: buildKnowledgeGraph(analyses).find((k) => k.agentId === agentId) ?? null,
     });
   }
   insights.sort((a, b) => b.totalEstUsd - a.totalEstUsd);

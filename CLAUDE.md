@@ -22,7 +22,7 @@ npm workspaces (`packages/*`). TypeScript throughout; ESM (`.js` import specifie
 | `@ccopt/server` | Fastify API: ingest, agents/keys, insights (LLM), analyze, reports, viewers. **Being retired** (see §6). | Node (Render) |
 | `@ccopt/cli` | `effigent` CLI (npm: `effigent`): `login`, `agent add/list`, `run` (wrap ANY agent command), `install claude` (SessionEnd hook) + `install otel/codex/python/node` (key-filled OTel recipes per harness — table-driven, one entry per new harness), `claude-hook`, upload. | Node |
 | `@ccopt/dashboard` | Next.js App Router dashboard + its own API routes. The product UI. | Vercel |
-| `@ccopt/site` | Marketing site, Next.js **static export** (`output: 'export'`). Pages: `/` (landing), `/developers` (full per-harness install guide), `/security` (redaction + posture). Endpoints are env-driven: `NEXT_PUBLIC_COLLECTOR_URL` / `NEXT_PUBLIC_DASHBOARD_URL` (set as GitHub `prod` environment Variables `COLLECTOR_URL`/`DASHBOARD_URL`, injected in the deploy workflow; unset → explicit `<placeholder>`) — never hardcode domains. | S3 + CloudFront |
+| `@ccopt/site` | Marketing site, Next.js **static export** (`output: 'export'`). Pages: `/` (landing), `/docs` (+6 doc pages), `/developers` (full per-harness install guide), `/about`, `/pricing`, `/security` (redaction + posture), `/terms`, `/privacy`. Endpoints are env-driven: `NEXT_PUBLIC_COLLECTOR_URL` / `NEXT_PUBLIC_DASHBOARD_URL` (set as GitHub `prod` environment Variables `COLLECTOR_URL`/`DASHBOARD_URL`, injected in the deploy workflow; unset → explicit `<placeholder>`) — never hardcode domains. | S3 + CloudFront |
 
 The engine (`core`) is deliberately I/O-free so both capture paths (Claude transcripts
 and OTLP spans) produce the **same `Run`**, and everything downstream is unchanged.
@@ -84,6 +84,12 @@ The data contract everything else depends on.
   `changedAt` (the "agent was modified" signal; on drift, validated tools
   should be re-shadowed). Surfaced as `drift` per agent in `/api/v1/insights`
   and a "⚠ behavior changed" badge in the Insights view.
+- **`knowledge.ts`** — **the knowledge graph.** Mines stable exploration lookups
+  (mechanical/cacheable calls whose question AND answer agree across runs) into typed
+  facts — file / search / listing / fetch / value — with support, Wilson confidence and
+  measured cost. `worthIt` gates emission on real coverage of the agent's exploration
+  traffic ("will this actually reduce greps?"). Surfaced per agent in insights and the
+  live Knowledge Graph view; injected via `effigent optimize`.
 - **`synthesize.ts` + `replay.ts`** — **tool synthesis (the former "W4").**
   `synthesizeTools(analyses)` slices maximal compilable column spans (clean/moderate
   dataflow boundaries; side-effect steps flagged `guarded`) and emits deterministic
@@ -144,6 +150,12 @@ Reads Neon directly via a pooled `pg` client (`lib/db.ts`).
   `models`, `optimized`, `added_by` (both guarded if their columns are absent).
 - `GET/PUT /api/v1/redaction` — workspace redaction rules (PUT is org-admin-only;
   validated by `engine/redact.ts`; ingest caches compiled rules 60s per tenant).
+- `GET /api/v1/optimize?agent=&mark=1` — **the activation bundle** (Bearer keys, public
+  in middleware): replay-validated ToolSpecs + knowledge graph + drift for the agent's
+  last 40 runs; `mark=1` stamps `optimized_at` when something activatable exists.
+  Consumed by `effigent optimize <agent>`, which writes `~/.effigent/bundles/<agent>/`
+  and installs a generated Claude Code skill (facts + recipes + runnable scripts for
+  fully-constant read-only bash units) under `~/.claude/skills/effigent-<agent>/`.
 - `GET /api/v1/sessions[?agent=]` — the tenant's runs, newest first.
 - `GET /api/v1/sessions/[id]` — one run (with `parsed`) for the DAG deep-dive.
 - `GET /api/v1/insights[?agent=&window=]` — **the determinism brain (v3)**: a thin
@@ -200,7 +212,7 @@ auth inside the handlers):
 - `GET /api/v1/reports` — key validation (`ccopt login` probes it).
 The engine bits these need are **vendored** in `dashboard/src/lib/engine/`
 (types/cost/canonicalize/transcript/otel/graph/taxonomy/align/determinism/provenance/
-synthesize/replay/embed/drift/redact/jsonb — copies of core with `.js`→`.ts` import specifiers;
+synthesize/replay/embed/drift/knowledge/redact/jsonb — copies of core with `.js`→`.ts` import specifiers;
 re-vendor after core changes:
 `for f in …; do { echo "// VENDORED …"; sed "s/\.js';/.ts';/g" packages/core/src/$f.ts; } > packages/dashboard/src/lib/engine/$f.ts; done`).
 `lib/agent-auth.ts` holds `authenticateKey` + `persistRun` (redaction + jsonb

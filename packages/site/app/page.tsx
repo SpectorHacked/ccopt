@@ -211,7 +211,7 @@ export default function Page() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, padding: '10px 12px', borderRadius: 8, background: 'oklch(0.97 0.005 260)', fontSize: 11, color: 'var(--ink-2)' }}>
                 <div><span style={{ fontWeight: 700, color: 'oklch(0.55 0.15 20)' }}>3</span> hot paths detected</div>
-                <div><span style={{ fontWeight: 700, color: 'oklch(0.4 0.13 150)' }}>$0.62</span> saved / 100 runs</div>
+                <div><span style={{ fontWeight: 700, color: 'oklch(0.4 0.13 150)' }}>$2.12</span> saved / 100 runs</div>
               </div>
             </div>
           </div>

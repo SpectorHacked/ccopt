@@ -19,4 +19,5 @@ export * from './synthesize.js';
 export * from './replay.js';
 export * from './embed.js';
 export * from './drift.js';
+export * from './knowledge.js';
 export * from './redact.js';
