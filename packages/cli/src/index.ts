@@ -31,7 +31,7 @@ import {
 import { uploadSessionFile } from './upload.js';
 
 const program = new Command();
-program.name('effigent').description('effigent — the Optimizer CLI: capture agent runs, compile away the waste').version('0.1.1');
+program.name('effigent').description('effigent — the Optimizer CLI: capture agent runs, compile away the waste').version('0.2.0');
 
 program
   .command('analyze')
