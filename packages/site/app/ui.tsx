@@ -5,7 +5,7 @@ import { DASHBOARD_URL } from './config';
 
 export function Nav({ cta = true }: { cta?: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 56px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'oklch(0.985 0.004 90 / 0.92)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
+    <div className="site-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '22px 56px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'oklch(0.985 0.004 90 / 0.92)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
       <Link href="/" style={{ display: 'flex', alignItems: 'center' }}>
         {/* eslint-disable-next-line @next/next/no-img-element -- static export, no optimizer */}
         <img src="/logo_effigent.webp" alt="Effigent" style={{ height: 30, width: 'auto', display: 'block' }} />
@@ -17,7 +17,7 @@ export function Nav({ cta = true }: { cta?: boolean }) {
         <Link href="/security">Security</Link>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <a href={`${DASHBOARD_URL}/sign-in`} style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-2)', padding: '9px 12px' }}>
+        <a href={`${DASHBOARD_URL}/sign-in`} className="nav-login" style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-2)', padding: '9px 12px', whiteSpace: 'nowrap' }}>
           Log in
         </a>
         {cta && (
@@ -32,7 +32,7 @@ export function Nav({ cta = true }: { cta?: boolean }) {
 
 export function Footer() {
   return (
-    <div style={{ borderTop: '1px solid var(--line)', padding: '28px 56px', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--ink-4)' }}>
+    <div className="site-footer" style={{ borderTop: '1px solid var(--line)', padding: '28px 56px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, fontSize: 13, color: 'var(--ink-4)' }}>
       <div>© 2026 Effigent — the compiler for AI agents</div>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         <Link href="/developers">Developer guide</Link>
@@ -66,9 +66,9 @@ export function CodeBlock({ title, children }: { title?: string; children: strin
 export function PageHero({ eyebrow, title, sub }: { eyebrow: string; title: string; sub: string }) {
   return (
     <div style={{ background: 'linear-gradient(180deg, oklch(0.95 0.018 275) 0%, oklch(0.985 0.004 90) 100%)' }}>
-      <div style={{ maxWidth: 880, margin: '0 auto', padding: '80px 32px 56px' }}>
+      <div className="page-hero" style={{ maxWidth: 880, margin: '0 auto', padding: '80px 32px 56px' }}>
         <div className="eyebrow" style={{ color: 'oklch(0.52 0.15 250)' }}><span className="d" style={{ background: 'oklch(0.58 0.17 250)' }} />{eyebrow}</div>
-        <h1 className="h-serif" style={{ fontSize: 44, lineHeight: 1.15, margin: '0 0 18px' }}>{title}</h1>
+        <h1 className="h-serif" style={{ fontSize: 'clamp(30px, 7.5vw, 44px)', lineHeight: 1.15, margin: '0 0 18px' }}>{title}</h1>
         <p style={{ fontSize: 17, color: 'var(--ink-2)', lineHeight: 1.65, maxWidth: 640, margin: 0 }}>{sub}</p>
       </div>
     </div>
@@ -76,7 +76,7 @@ export function PageHero({ eyebrow, title, sub }: { eyebrow: string; title: stri
 }
 
 export function DocSection({ children, id }: { children: ReactNode; id?: string }) {
-  return <div id={id} style={{ maxWidth: 880, margin: '0 auto', padding: '46px 32px', borderTop: '1px solid var(--line)' }}>{children}</div>;
+  return <div id={id} className="docsec" style={{ maxWidth: 880, margin: '0 auto', padding: '46px 32px', borderTop: '1px solid var(--line)' }}>{children}</div>;
 }
 
 export function StepBadge({ n }: { n: number }) {

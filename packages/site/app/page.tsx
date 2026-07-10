@@ -55,7 +55,7 @@ function VGroup({ label, minWidth = 118 }: { label: string; minWidth?: number })
 }
 
 function Section({ id, children }: { id?: string; children: ReactNode }) {
-  return <div id={id} style={{ maxWidth: CONTENT, margin: '0 auto', padding: '70px 32px', borderTop: '1px solid var(--line)' }}>{children}</div>;
+  return <div id={id} className="section" style={{ maxWidth: CONTENT, margin: '0 auto', padding: '70px 32px', borderTop: '1px solid var(--line)' }}>{children}</div>;
 }
 
 function Eyebrow({ hue, children }: { hue: string; children: ReactNode }) {
@@ -74,17 +74,17 @@ export default function Page() {
       {/* HERO */}
       <div style={{ position: 'relative', background: 'linear-gradient(180deg, oklch(0.95 0.018 275) 0%, oklch(0.97 0.012 275) 55%, oklch(0.985 0.004 90) 100%)', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(oklch(0.75 0.03 275 / 0.5) 1px, transparent 1px)', backgroundSize: '22px 22px', maskImage: 'radial-gradient(ellipse 70% 60% at 50% 20%, black 40%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 70% 60% at 50% 20%, black 40%, transparent 100%)' }} />
-        <div style={{ position: 'relative', maxWidth: CONTENT, margin: '0 auto', padding: '120px 32px 64px' }}>
+        <div className="hero-pad" style={{ position: 'relative', maxWidth: CONTENT, margin: '0 auto', padding: '120px 32px 64px' }}>
           <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 460px', gap: 56, alignItems: 'center' }}>
             <div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--mono)', fontSize: 12.5, color: 'oklch(0.45 0.012 260)', border: '1px solid oklch(0.87 0.005 90)', borderRadius: 20, padding: '6px 14px', marginBottom: 26 }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green-dot)' }} />Runtime layer for production AI agents
               </div>
-              <div className="h-serif" style={{ fontSize: 52, lineHeight: 1.12, marginBottom: 22 }}>Stop paying your agents to <b>think twice</b>.</div>
+              <div className="h-serif" style={{ fontSize: 'clamp(32px, 8vw, 52px)', lineHeight: 1.12, marginBottom: 22 }}>Stop paying your agents to <b>think twice</b>.</div>
               <div style={{ fontSize: 17, color: 'var(--ink-2)', lineHeight: 1.65, maxWidth: 520, marginBottom: 36 }}>
                 Effigent sits alongside every agent execution, watches which tool calls and reasoning steps never change, and replaces them with cache — no code changes, no new framework.
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 28 }}>
                 <Link href="/developers" className="btn btn-primary" style={{ padding: '13px 26px', fontSize: 14.5, display: 'inline-block' }}>Install in 2 minutes</Link>
                 <Link href="/security" className="btn btn-ghost" style={{ padding: '13px 22px', fontSize: 14.5, display: 'inline-block' }}>Security &amp; privacy</Link>
               </div>
@@ -104,7 +104,7 @@ export default function Page() {
               </div>
             </div>
 
-            <div style={{ position: 'relative', border: '1px solid var(--line)', borderRadius: 14, background: 'oklch(0.995 0.002 90)', padding: 18, boxShadow: '0 20px 50px -24px oklch(0.2 0.012 260 / 0.25)' }}>
+            <div className="hero-graph" style={{ position: 'relative', border: '1px solid var(--line)', borderRadius: 14, background: 'oklch(0.995 0.002 90)', padding: 18, boxShadow: '0 20px 50px -24px oklch(0.2 0.012 260 / 0.25)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, padding: '0 4px' }}>
                 <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Live call graph · acme-codegen-agent</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--green)' }}>
@@ -120,7 +120,7 @@ export default function Page() {
                 ))}
                 {graph.nodes.map((n, i) => (
                   <div key={i} style={{ position: 'absolute', left: n.left, top: n.top, transform: 'translate(-50%,-50%)' }}>
-                    <div style={{ position: 'relative', padding: '7px 12px', borderRadius: 8, background: 'oklch(0.99 0.002 90)', border: `1px solid ${n.heatColor}`, fontSize: 11, fontWeight: 600, color: 'oklch(0.28 0.012 260)', whiteSpace: 'nowrap', animation: n.glow ? 'pulseGlow 2.4s ease-in-out infinite' : undefined }}>
+                    <div className="gnode" style={{ position: 'relative', padding: '7px 12px', borderRadius: 8, background: 'oklch(0.99 0.002 90)', border: `1px solid ${n.heatColor}`, fontSize: 11, fontWeight: 600, color: 'oklch(0.28 0.012 260)', whiteSpace: 'nowrap', animation: n.glow ? 'pulseGlow 2.4s ease-in-out infinite' : undefined }}>
                       {n.label}
                       <div style={{ position: 'absolute', top: -8, right: -8, minWidth: 17, height: 17, padding: '0 3px', borderRadius: 9, background: n.heatColor, color: 'white', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--mono)' }}>{n.count}</div>
                     </div>
@@ -165,7 +165,7 @@ export default function Page() {
           ] as Array<[number, string, string]>).map(([n, suffix, label]) => (
             <Reveal key={label}>
               <div style={{ textAlign: 'center' }}>
-                <div className="h-serif" style={{ fontSize: 44, lineHeight: 1, color: 'var(--ink)' }}>
+                <div className="h-serif" style={{ fontSize: 'clamp(30px, 6vw, 44px)', lineHeight: 1, color: 'var(--ink)' }}>
                   <CountUp to={n} suffix={suffix} />
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 8 }}>{label}</div>
@@ -181,7 +181,7 @@ export default function Page() {
         <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.1fr', gap: 60, alignItems: 'start' }}>
           <div>
             <Eyebrow hue="20">The problem</Eyebrow>
-            <div className="h-serif" style={{ fontSize: 32, lineHeight: 1.25, marginBottom: 16 }}>Every execution starts <b>almost from scratch</b>.</div>
+            <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', lineHeight: 1.25, marginBottom: 16 }}>Every execution starts <b>almost from scratch</b>.</div>
             <div style={{ fontSize: 15, color: 'var(--ink-2)', lineHeight: 1.6, maxWidth: 380 }}>Agents re-derive the same answers run after run — burning tokens, time, and budget on work they&apos;ve already done.</div>
           </div>
           <div className="problems-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -200,9 +200,9 @@ export default function Page() {
       <Section id="how">
         <Reveal>
         <Eyebrow hue="290">How it works</Eyebrow>
-        <div className="h-serif" style={{ fontSize: 32, marginBottom: 44, maxWidth: 640 }}>Every execution becomes a graph. Every graph gets <b>compiled down</b>.</div>
+        <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 44, maxWidth: 640 }}>Every execution becomes a graph. Every graph gets <b>compiled down</b>.</div>
 
-        <div style={{ border: '1px solid var(--line)', borderRadius: 14, padding: '32px 28px 24px', background: 'oklch(0.995 0.002 90)' }}>
+        <div className="arch-panel" style={{ border: '1px solid var(--line)', borderRadius: 14, padding: '32px 28px 24px', background: 'oklch(0.995 0.002 90)' }}>
           <div className="arch-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 56px 1fr', gap: 8, alignItems: 'start' }}>
             <div>
               <div style={{ fontSize: 14.5, fontWeight: 700, color: 'oklch(0.25 0.012 260)', marginBottom: 6 }}>Original Execution</div>
@@ -212,7 +212,7 @@ export default function Page() {
               <Center><FlowNode scheme={SCHEMES.purple} label="Agent Starts" minWidth={180} delay={0.12} /></Center>
               <Line /><Center><FlowNode scheme={SCHEMES.purple} label="Planner (Opus 4.8)" minWidth={180} delay={0.24} /></Center>
               <Line />
-              <div style={{ display: 'flex', gap: 14, justifyContent: 'center' }}>
+              <div className="vrow" style={{ display: 'flex', gap: 14, justifyContent: 'center' }}>
                 {['extractImports()', 'findRoutes()', 'analyzeDeps()'].map((g) => <VGroup key={g} label={g} minWidth={110} />)}
               </div>
               <Line /><Center><VGroup label="compiles to runTests()" minWidth={150} /></Center>
@@ -232,8 +232,8 @@ export default function Page() {
               <Line color="var(--green-dot)" /><Center><FlowNode scheme={SCHEMES.purple} label="Planner (Sonnet 5)" minWidth={180} /></Center>
               <Line color="var(--green-dot)" /><Center><FlowNode scheme={SCHEMES.green} label="Knowledge Graph Lookup" glow minWidth={180} /></Center>
               <Line color="var(--green-dot)" />
-              <div style={{ display: 'flex', gap: 14, justifyContent: 'center', position: 'relative', paddingTop: 16 }}>
-                <div style={{ position: 'absolute', top: 0, left: '14%', right: '14%', height: 1, background: LINE }} />
+              <div className="vrow" style={{ display: 'flex', gap: 14, justifyContent: 'center', position: 'relative', paddingTop: 16 }}>
+                <div className="tool-connector" style={{ position: 'absolute', top: 0, left: '14%', right: '14%', height: 1, background: LINE }} />
                 {['extractImports()', 'findRoutes()', 'analyzeDeps()'].map((l) => (
                   <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     <div style={{ width: 1, height: 16, background: LINE }} />
@@ -247,7 +247,7 @@ export default function Page() {
             </div>
           </div>
 
-          <div style={{ marginTop: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 10, padding: '16px 22px', background: 'linear-gradient(100deg, oklch(0.95 0.03 290) 0%, oklch(0.93 0.035 270) 25%, oklch(0.95 0.03 290) 50%, oklch(0.93 0.035 270) 75%, oklch(0.95 0.03 290) 100%)', backgroundSize: '200% 100%', animation: 'shimmerMove 6s linear infinite' }}>
+          <div style={{ marginTop: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, borderRadius: 10, padding: '16px 22px', background: 'linear-gradient(100deg, oklch(0.95 0.03 290) 0%, oklch(0.93 0.035 270) 25%, oklch(0.95 0.03 290) 50%, oklch(0.93 0.035 270) 75%, oklch(0.95 0.03 290) 100%)', backgroundSize: '200% 100%', animation: 'shimmerMove 6s linear infinite' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, color: 'oklch(0.4 0.13 290)' }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'oklch(0.55 0.16 290)' }} />Effigent Impact
             </div>
@@ -272,7 +272,7 @@ export default function Page() {
         <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.1fr', gap: 60, alignItems: 'center' }}>
           <div>
             <Eyebrow hue="85">Determinism engine</Eyebrow>
-            <div className="h-serif" style={{ fontSize: 30, lineHeight: 1.25, marginBottom: 16 }}>Every node gets a determinism score, <b>0 to 100</b>.</div>
+            <div className="h-serif" style={{ fontSize: 'clamp(24px, 5.5vw, 30px)', lineHeight: 1.25, marginBottom: 16 }}>Every node gets a determinism score, <b>0 to 100</b>.</div>
             <div style={{ fontSize: 15, color: 'var(--ink-2)', lineHeight: 1.6 }}>Scored on input/output stability, semantic similarity, historical variance, and repeat frequency — then routed automatically.</div>
           </div>
           <div>
@@ -298,7 +298,7 @@ export default function Page() {
       <Section>
         <Reveal>
           <Eyebrow hue="150">The product</Eyebrow>
-          <div className="h-serif" style={{ fontSize: 32, marginBottom: 8, maxWidth: 620 }}>See every run. Then watch it get <b>cheaper</b>.</div>
+          <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 8, maxWidth: 620 }}>See every run. Then watch it get <b>cheaper</b>.</div>
           <div style={{ fontSize: 15, color: 'var(--ink-2)', marginBottom: 36, maxWidth: 620 }}>
             Every session lands as a navigable execution graph with per-model cost — and once an agent has history, the determinism engine turns it into concrete optimization actions.
           </div>
@@ -318,7 +318,7 @@ export default function Page() {
                   ['seed-docs-011', 'docs-writer', '7', '$0.016', false],
                 ] as Array<[string, string, string, string, boolean]>).map(([id, agent, steps, cost, opt]) => (
                   <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', borderBottom: '1px solid oklch(0.19 0.012 265)', fontSize: 11.5 }}>
-                    <span style={{ fontFamily: 'var(--mono)', color: 'oklch(0.85 0.005 265)', width: 110, flexShrink: 0 }}>{id}</span>
+                    <span className="prev-id" style={{ fontFamily: 'var(--mono)', color: 'oklch(0.85 0.005 265)', width: 110, flexShrink: 0 }}>{id}</span>
                     <span style={{ color: 'oklch(0.65 0.01 265)', flex: 1, display: 'flex', alignItems: 'center', gap: 7 }}>
                       {agent}
                       {opt && <span style={{ fontSize: 9, fontWeight: 700, color: 'oklch(0.72 0.14 150)', border: '1px solid oklch(0.4 0.1 150)', borderRadius: 8, padding: '1px 7px' }}>Optimized</span>}
@@ -362,7 +362,7 @@ export default function Page() {
       <Section id="install">
         <Reveal>
           <Eyebrow hue="250">Universal installation</Eyebrow>
-          <div className="h-serif" style={{ fontSize: 32, marginBottom: 8 }}>Install once. <b>Change nothing.</b></div>
+          <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 8 }}>Install once. <b>Change nothing.</b></div>
           <div style={{ fontSize: 15, color: 'var(--ink-2)', marginBottom: 36, maxWidth: 600 }}>
             One scoped key per agent, then pick the capture method for your harness — the engine is identical for every one of them.
           </div>
@@ -371,7 +371,7 @@ export default function Page() {
               <div key={t.key} onClick={() => setTab(t.key)} style={{ padding: '10px 18px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: tab === t.key ? 'var(--ink)' : 'var(--ink-4)', borderBottom: tab === t.key ? '2px solid var(--ink)' : '2px solid transparent', marginBottom: -1 }}>{t.label}</div>
             ))}
           </div>
-          <div style={{ background: 'oklch(0.16 0.012 260)', borderRadius: '0 0 8px 8px', padding: '26px 28px', fontFamily: 'var(--mono)', fontSize: 13.5, color: 'oklch(0.85 0.01 150)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{INSTALL_CODE[tab]}</div>
+          <div className="install-code" style={{ background: 'oklch(0.16 0.012 260)', borderRadius: '0 0 8px 8px', padding: '26px 28px', fontFamily: 'var(--mono)', fontSize: 13.5, color: 'oklch(0.85 0.01 150)', lineHeight: 1.8, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{INSTALL_CODE[tab]}</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginTop: 22 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-3)' }}>
               {supportedHarnesses.map((h) => <span key={h}>{h}</span>)}
@@ -382,11 +382,11 @@ export default function Page() {
       </Section>
 
       {/* MANIFESTO */}
-      <div style={{ position: 'relative', borderTop: '1px solid var(--line)', background: 'oklch(0.2 0.012 260)', padding: '100px 32px', overflow: 'hidden' }}>
+      <div className="manifesto-pad" style={{ position: 'relative', borderTop: '1px solid var(--line)', background: 'oklch(0.2 0.012 260)', padding: '100px 32px', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: '50%', left: '50%', width: 520, height: 340, transform: 'translate(-50%,-50%)', background: 'radial-gradient(ellipse, oklch(0.5 0.15 280 / 0.35), transparent 70%)', animation: 'glowPulse 4s ease-in-out infinite', pointerEvents: 'none' }} />
         <div style={{ position: 'relative', maxWidth: 780, margin: '0 auto', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'oklch(0.6 0.01 260)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 24 }}>Positioning</div>
-          <div className="h-serif" style={{ fontSize: 36, lineHeight: 1.35, color: 'oklch(0.98 0.004 90)' }}>Treat an AI agent as <b>a program</b>, not a sequence of prompts. Parse every execution into a universal graph, run compiler-like optimization passes, validate against history, and execute the optimized result.</div>
+          <div className="h-serif" style={{ fontSize: 'clamp(24px, 6.5vw, 36px)', lineHeight: 1.35, color: 'oklch(0.98 0.004 90)' }}>Treat an AI agent as <b>a program</b>, not a sequence of prompts. Parse every execution into a universal graph, run compiler-like optimization passes, validate against history, and execute the optimized result.</div>
           <div style={{ fontSize: 15, color: 'oklch(0.68 0.01 260)', marginTop: 28 }}>The compiler for AI agents.</div>
         </div>
       </div>
@@ -396,7 +396,7 @@ export default function Page() {
         <Reveal>
           <div style={{ textAlign: 'center', marginBottom: 36 }}>
             <div style={{ display: 'flex', justifyContent: 'center' }}><Eyebrow hue="150">Pricing</Eyebrow></div>
-            <div className="h-serif" style={{ fontSize: 32, marginBottom: 10 }}>Start free. <b>Scale when your fleet does.</b></div>
+            <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 10 }}>Start free. <b>Scale when your fleet does.</b></div>
             <div style={{ fontSize: 15, color: 'var(--ink-2)' }}>Flat plans — never a percentage of your model spend.</div>
           </div>
           <div className="tier-mini-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
@@ -420,10 +420,10 @@ export default function Page() {
       </Section>
 
       {/* FOOTER CTA */}
-      <div style={{ borderTop: '1px solid var(--line)', padding: '90px 32px', textAlign: 'center' }}>
+      <div className="cta-pad" style={{ borderTop: '1px solid var(--line)', padding: '90px 32px', textAlign: 'center' }}>
         <Reveal>
-          <div className="h-serif" style={{ fontSize: 34, marginBottom: 26 }}>Stop paying your agents to <b>think twice</b>.</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+          <div className="h-serif" style={{ fontSize: 'clamp(27px, 7vw, 34px)', marginBottom: 26 }}>Stop paying your agents to <b>think twice</b>.</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 14 }}>
             <Link href="/developers" className="btn btn-primary" style={{ padding: '13px 26px', fontSize: 14.5, display: 'inline-block' }}>Install in 2 minutes</Link>
             <Link href="/security" className="btn btn-ghost" style={{ padding: '13px 22px', fontSize: 14.5, display: 'inline-block' }}>Security &amp; privacy</Link>
           </div>
