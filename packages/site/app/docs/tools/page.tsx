@@ -71,8 +71,10 @@ export default function ToolsDocs() {
           </p>
           <p style={{ margin: '0 0 10px' }}>
             <strong>Automatic:</strong> <code>effigent install claude</code> wires a SessionStart hook that refreshes the
-            bundle and skill before each session (throttled, fail-open — a refresh problem never blocks work). SDK / OTel
-            agents consume <code>bundle.json</code> programmatically.
+            bundle and skill before each session (throttled, fail-open — a refresh problem never blocks work). Codex:{' '}
+            <code>effigent optimize --codex</code> maintains a managed section in your project&apos;s <code>AGENTS.md</code>,
+            which Codex reads natively. SDK / Docker agents: every bundle ships a harness-neutral <code>context.md</code> to
+            load into system context, plus <code>bundle.json</code> for programmatic use.
           </p>
           <p style={{ margin: 0 }}>
             <strong>Your switch:</strong> clicking an agent in the dashboard shows every injected tool — status, pass rate,
