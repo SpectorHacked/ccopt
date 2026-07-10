@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
   SCHEMES, problems, engineParts, scoreBands, installTabs, INSTALL_CODE,
@@ -41,6 +41,29 @@ function Line({ h = 20, color = RED, delay = 0 }: { h?: number; color?: string; 
 }
 const Center = ({ children }: { children: ReactNode }) => <div style={{ display: 'flex', justifyContent: 'center' }}>{children}</div>;
 
+/** Eased scrollLeft animation. Two Chromium behaviors force the design:
+ *  mandatory scroll-snap re-snaps programmatic scrolls (so snap is suspended
+ *  and restored on landing — we land exactly on a snap point), and rendering
+ *  throttling can starve rAF/native smooth scrolling entirely, so the loop is
+ *  timer-driven and the end state is enforced even if every tick is skipped. */
+function animateScrollTo(el: HTMLElement, left: number, ms = 550): void {
+  const from = el.scrollLeft;
+  const delta = left - from;
+  if (Math.abs(delta) < 1) return;
+  const prevSnap = el.style.scrollSnapType;
+  el.style.scrollSnapType = 'none';
+  const t0 = performance.now();
+  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+  const tick = window.setInterval(() => {
+    const t = Math.min(1, (performance.now() - t0) / ms);
+    el.scrollLeft = from + delta * ease(t);
+    if (t >= 1) {
+      window.clearInterval(tick);
+      el.style.scrollSnapType = prevSnap;
+    }
+  }, 16);
+}
+
 function VGroup({ label, minWidth = 118 }: { label: string; minWidth?: number }) {
   return (
     <div style={{ border: `2px dashed ${RED}`, borderRadius: 12, padding: '10px 8px 2px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -65,6 +88,62 @@ function Eyebrow({ hue, children }: { hue: string; children: ReactNode }) {
 export default function Page() {
   const [tab, setTab] = useState(installTabs[0].key); // first tab — never a stale key
   const graph = buildRuntimeGraph();
+
+  // Mobile "How it works": the two executions become a swipeable slider, and
+  // the first time the section scrolls into view we animate old → new once —
+  // the compile story told as motion. Any touch cancels the tour; desktop and
+  // prefers-reduced-motion keep the static side-by-side.
+  const archRef = useRef<HTMLDivElement>(null);
+  const [archSlide, setArchSlide] = useState(0);
+  const archTouched = useRef(false);
+  useEffect(() => {
+    const el = archRef.current;
+    if (!el) return;
+    if (!window.matchMedia('(max-width: 900px)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const cancel = () => { archTouched.current = true; };
+    el.addEventListener('pointerdown', cancel, { passive: true });
+    el.addEventListener('touchstart', cancel, { passive: true });
+    // The sweep is retired only once it verifiably LANDED (or the user took
+    // over) — a throttled/mid-scroll first attempt must not burn the one shot.
+    let done = false;
+    let pending: number | undefined;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (done || archTouched.current) { io.disconnect(); return; }
+        if (!entries[0].isIntersecting) {
+          if (pending !== undefined) { window.clearTimeout(pending); pending = undefined; }
+          return;
+        }
+        if (pending !== undefined) return;
+        pending = window.setTimeout(() => {
+          pending = undefined;
+          if (done || archTouched.current) return;
+          animateScrollTo(el, el.clientWidth, 850);
+          window.setTimeout(() => {
+            if (el.scrollLeft > el.clientWidth / 2) { done = true; io.disconnect(); }
+          }, 1000);
+        }, 1400);
+      },
+      { threshold: 0.35 },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      if (pending !== undefined) window.clearTimeout(pending);
+      el.removeEventListener('pointerdown', cancel);
+      el.removeEventListener('touchstart', cancel);
+    };
+  }, []);
+  const archGoTo = (i: number) => {
+    archTouched.current = true;
+    const el = archRef.current;
+    if (el) animateScrollTo(el, i * el.clientWidth);
+  };
+  const onArchScroll = () => {
+    const el = archRef.current;
+    if (el) setArchSlide(el.scrollLeft > el.clientWidth / 2 ? 1 : 0);
+  };
 
   return (
     <div style={{ width: '100%', overflowX: 'hidden' }}>
@@ -203,8 +282,16 @@ export default function Page() {
         <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 44, maxWidth: 640 }}>Every execution becomes a graph. Every graph gets <b>compiled down</b>.</div>
 
         <div className="arch-panel" style={{ border: '1px solid var(--line)', borderRadius: 14, padding: '32px 28px 24px', background: 'oklch(0.995 0.002 90)' }}>
-          <div className="arch-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 56px 1fr', gap: 8, alignItems: 'start' }}>
-            <div>
+          {/* mobile-only slider control — hidden on desktop via CSS */}
+          <div className="arch-switch" role="tablist" aria-label="Execution comparison">
+            {['Original', 'Optimized'].map((label, i) => (
+              <button key={label} role="tab" aria-selected={archSlide === i} className={archSlide === i ? 'on' : ''} onClick={() => archGoTo(i)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div ref={archRef} onScroll={onArchScroll} className="arch-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 56px 1fr', gap: 8, alignItems: 'start' }}>
+            <div className="arch-col">
               <div style={{ fontSize: 14.5, fontWeight: 700, color: 'oklch(0.25 0.012 260)', marginBottom: 6 }}>Original Execution</div>
               <div style={{ display: 'flex', gap: 14, marginBottom: 26, flexWrap: 'wrap' }}>
                 {originalStats.map((s, i) => <div key={i} style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontWeight: 600, color: 'oklch(0.3 0.012 260)' }}>{s.value}</span> {s.label}</div>)}
@@ -223,7 +310,7 @@ export default function Page() {
               <div style={{ width: 40, height: 40, borderRadius: '50%', border: `1px solid ${LINE}`, background: 'var(--cream)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: 'var(--ink-2)', animation: 'arrowPulse 2.6s ease-in-out infinite' }}>&rarr;</div>
             </div>
 
-            <div>
+            <div className="arch-col">
               <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--green)', marginBottom: 6 }}>Optimized Execution</div>
               <div style={{ display: 'flex', gap: 14, marginBottom: 26, flexWrap: 'wrap' }}>
                 {optimizedStats.map((s, i) => <div key={i} style={{ fontSize: 12, color: 'var(--ink-3)' }}><span style={{ fontWeight: 600, color: 'var(--green)' }}>{s.value}</span> {s.label}</div>)}

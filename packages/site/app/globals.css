@@ -75,10 +75,39 @@ a:hover { color: oklch(0.4 0.14 250); }
   .grid-2 { grid-template-columns: 1fr !important; }
   .hero-grid { grid-template-columns: 1fr !important; }
   .nav-links { display: none !important; }
-  .arch-grid { grid-template-columns: 1fr !important; }
   .arch-arrow { display: none !important; }
   .engine-grid { grid-template-columns: 1fr 1fr !important; }
   .problems-grid { grid-template-columns: 1fr !important; }
+}
+
+/* "How it works" on mobile: a swipeable Original → Optimized slider.
+   Scroll-snap does the sliding; page.tsx adds the segmented switch and a
+   one-time animated old→new sweep when the section enters the viewport. */
+.arch-switch { display: none; }
+@media (max-width: 900px) {
+  .arch-grid {
+    display: flex !important;
+    gap: 0 !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .arch-grid::-webkit-scrollbar { display: none; }
+  .arch-col { flex: 0 0 100%; min-width: 100%; scroll-snap-align: center; scroll-snap-stop: always; }
+  .arch-switch {
+    display: flex; gap: 4px; width: max-content; margin: 0 auto 20px;
+    border: 1px solid var(--line-2); border-radius: 20px; padding: 4px;
+    background: oklch(0.975 0.004 90);
+  }
+  .arch-switch button {
+    border: none; cursor: pointer; font-family: var(--sans); font-weight: 640;
+    font-size: 12.5px; padding: 7px 18px; border-radius: 16px;
+    background: transparent; color: var(--ink-3);
+    transition: background .25s ease, color .25s ease;
+  }
+  .arch-switch button.on { background: var(--ink); color: var(--cream); }
 }
 
 /* Roboto Flex weight contrast — variable axis lets extremes coexist cheaply */
