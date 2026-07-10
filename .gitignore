@@ -19,3 +19,5 @@ demo-report.json
 
 # internal business docs stay local
 ccopt-mvp-spec.md
+.vercel
+.env*
