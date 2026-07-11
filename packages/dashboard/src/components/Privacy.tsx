@@ -92,20 +92,18 @@ export function Privacy() {
         {rules.map((r, i) => (
           <div key={i} className="rule-row">
             <input
-              className="rule-input"
+              className="rule-input rule-name"
               value={r.name}
               disabled={disabled}
               placeholder="NAME (e.g. TICKET_ID)"
               onChange={(e) => update(i, { name: e.target.value.toUpperCase() })}
-              style={{ width: 190 }}
             />
             <input
-              className="rule-input mono"
+              className="rule-input rule-pattern mono"
               value={r.pattern}
               disabled={disabled}
               placeholder={'pattern (e.g. JIRA-\\d+)'}
               onChange={(e) => update(i, { pattern: e.target.value })}
-              style={{ flex: 1 }}
             />
             <label className="tgl" title={r.enabled ? 'Rule active — click to disable' : 'Rule disabled — click to enable'}>
               <input

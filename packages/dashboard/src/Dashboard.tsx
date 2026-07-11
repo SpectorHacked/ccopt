@@ -49,6 +49,7 @@ export function Dashboard() {
   const [agent, setAgent] = useState<string>(ALL_AGENTS);
   const [view, setView] = useState<View>('overview');
   const [session, setSession] = useState<{ id: string; optimized: boolean } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { organization } = useOrganization();
   const demo = organization?.id === DEMO_ORG_ID;
 
@@ -83,7 +84,13 @@ export function Dashboard() {
 
   return (
     <div className="app">
-      <Sidebar active={sidebarActive} onSelect={(k) => setView(k as View)} />
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+      <Sidebar
+        active={sidebarActive}
+        onSelect={(k) => setView(k as View)}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
       <main className="main">
         {view === 'install' ? (
           <Install onClose={() => setView('overview')} />
@@ -91,6 +98,9 @@ export function Dashboard() {
           <div className="main-inner">
             <header className="head">
               <div className="head-row">
+                <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+                  <Ic n="menu" />
+                </button>
                 <div>
                   <h1>{head.title}</h1>
                   <div className="sub">{head.sub}</div>

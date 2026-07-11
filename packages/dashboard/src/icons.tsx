@@ -28,6 +28,8 @@ const P: Record<string, string> = {
   scissors: 'M6 6a2.5 2.5 0 1 0 0-.01M6 18a2.5 2.5 0 1 0 0-.01M8 8l12 8M8 16l12-8',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM20 20l-4-4',
   check: 'M4 12l5 5L20 6',
+  menu: 'M4 7h16M4 12h16M4 17h16',
+  x: 'M6 6l12 12M18 6 6 18',
 };
 
 export function Ic({ n, className, style }: { n: string; className?: string; style?: CSSProperties }) {

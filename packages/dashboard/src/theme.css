@@ -286,6 +286,23 @@ body {
   .install-grid { grid-template-columns: 1fr; }
 }
 
+.hamburger-btn {
+  display: none; align-items: center; justify-content: center; flex: none;
+  width: 36px; height: 36px; border-radius: 10px; margin-right: 4px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--txt-2); cursor: pointer;
+}
+.hamburger-btn svg { width: 18px; height: 18px; }
+.hamburger-btn:hover { color: var(--txt); border-color: var(--accent-line); }
+
+.sidebar-close {
+  display: none; margin-left: auto; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  background: transparent; border: 1px solid var(--border); color: var(--txt-2); cursor: pointer;
+}
+.sidebar-close svg { width: 15px; height: 15px; }
+
+.sidebar-backdrop { display: none; }
+
 /* ---------- fill height / align columns to the bottom ---------- */
 .main-inner { min-height: 100%; display: flex; flex-direction: column; }
 .view-body { flex: 1 1 auto; display: flex; flex-direction: column; gap: 16px; }
@@ -602,6 +619,8 @@ body {
 .rule-input::placeholder { color: var(--txt-4); }
 .rule-input:disabled { opacity: .45; }
 .rule-input.mono { font-family: var(--mono); }
+.rule-input.rule-name { width: 190px; }
+.rule-input.rule-pattern { flex: 1; }
 
 .tgl { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
 .tgl input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
@@ -627,3 +646,54 @@ body {
 }
 .rule-x:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
 .rule-x:disabled { opacity: .4; cursor: default; }
+
+/* ---------- mobile: hamburger + off-canvas sidebar ----------
+ * Deliberately last in the file: several rules here (e.g. .rule-input.rule-name)
+ * share exact specificity with an earlier unconditional rule, and CSS breaks
+ * ties by source order — an earlier @media block loses to a later
+ * unconditional one even while the media query matches. Keeping every
+ * responsive override below all base component styles is what makes them win. */
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .hamburger-btn { display: inline-flex; }
+
+  .sidebar {
+    position: fixed; inset: 0 auto 0 0; z-index: 60; width: 258px; max-width: 82vw;
+    transform: translateX(-100%);
+    transition: transform .28s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 28px 0 60px -24px rgba(0, 0, 0, 0.55);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-close { display: inline-flex; }
+
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 55;
+    background: rgba(4, 4, 8, 0.55); backdrop-filter: blur(1px);
+  }
+
+  .main-inner { padding: 16px 16px 32px; }
+  .head-row { flex-wrap: wrap; row-gap: 12px; }
+  .head h1 { font-size: 21px; }
+  .head-actions { gap: 10px; }
+  .toolbar { margin-top: 14px; }
+  .agent-filter { flex: 1 1 auto; }
+
+  .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .flows { grid-template-columns: 1fr; }
+  .arrow-mid { display: none; }
+  .live-cards { grid-template-columns: 1fr; }
+
+  .sess-totals { flex-wrap: wrap; row-gap: 10px; }
+  .ins-row { flex-wrap: wrap; row-gap: 8px; }
+  .ins-metrics { width: 100%; justify-content: space-between; }
+  .dag-head { flex-wrap: wrap; row-gap: 12px; }
+  .dag-stats { flex-wrap: wrap; row-gap: 10px 22px; }
+
+  .rule-row { flex-wrap: wrap; row-gap: 8px; }
+  .rule-input.rule-name { width: 100%; }
+  .rule-input.rule-pattern { flex-basis: 100%; }
+}
+
+@media (max-width: 480px) {
+  .kpis { grid-template-columns: 1fr; }
+}
