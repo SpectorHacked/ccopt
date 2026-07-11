@@ -11,6 +11,7 @@ const isPublic = createRouteMatcher([
   '/api/v1/agents', // GET uses Clerk auth() internally; POST uses Bearer keys
   '/api/v1/reports',
   '/api/v1/optimize', // CLI activation bundle — Bearer keys inside the handler
+  '/healthz', // liveness probe (effigent doctor) — public, no auth, no DB
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
