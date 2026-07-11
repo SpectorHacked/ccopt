@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { installMethods, installStep1, collectorBase } from '../data.ts';
+import { installMethods, installStep1, collectorBase, agentInstallPrompt } from '../data.ts';
 import { Ic } from '../icons.tsx';
 
-function CodeBlock({ code }: { code: string }) {
+function CodeBlock({ code, wrap }: { code: string; wrap?: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard?.writeText(code).then(() => {
@@ -13,7 +13,7 @@ function CodeBlock({ code }: { code: string }) {
   return (
     <div className="code">
       <button className="code-copy" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
-      <pre>{code}</pre>
+      <pre className={wrap ? 'wrap' : undefined}>{code}</pre>
     </div>
   );
 }
@@ -155,6 +155,23 @@ export function Install({ onClose }: { onClose: () => void }) {
               <CodeBlock code={s.code} />
             </div>
           ))}
+
+          {/* Hands-off path: paste this into the agent and it installs itself. */}
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-soft)' }}>
+            <div className="step-label" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Ic n="spark" style={{ width: 14, height: 14, color: 'var(--accent-2)' }} />
+              Or — let the agent install itself
+            </div>
+            <div className="panel-sub" style={{ marginBottom: 8, maxWidth: '62ch' }}>
+              Paste this prompt into the agent ({method.name}). It runs the whole setup on its own machine — no manual commands.
+            </div>
+            <CodeBlock code={agentInstallPrompt(method.key, base, tenantKey)} wrap />
+            <div className="foot-note" style={{ marginTop: 8 }}>
+              {tenantKey
+                ? 'Contains your workspace key — paste only into an agent you trust.'
+                : 'Generate a workspace key in step 0 to pre-fill it here, or the prompt ships with a <workspace-key> placeholder.'}
+            </div>
+          </div>
         </section>
       </div>
 

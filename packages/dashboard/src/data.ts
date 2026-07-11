@@ -295,13 +295,64 @@ traceloop.initialize({
     ],
   },
   {
-    key: 'proxy', name: 'Proxy / Sidecar', icon: 'route', tint: 'var(--cyan)', tag: 'Fallback · roadmap',
-    blurb: 'For closed harnesses you can neither instrument nor read: route the provider base URL through Effigent. (Fallback path — on the roadmap.)',
-    steps: [{ label: 'Point the provider base URL at Effigent', code: `export ANTHROPIC_BASE_URL=${COLLECTOR}/proxy
-export OPENAI_BASE_URL=${COLLECTOR}/proxy/v1
-export EFFIGENT_KEY=<scoped-key>` }],
+    key: 'proxy', name: 'Proxy / Sidecar', icon: 'route', tint: 'var(--cyan)', tag: 'Fallback · local gateway',
+    blurb: 'For harnesses you can neither hook nor instrument: run the local capturing gateway and point your model client at it. It forwards to the real provider (your key passes through untouched) and mirrors each call to Effigent.',
+    steps: [{ label: 'Run the gateway, then point your client at it', code: `effigent proxy --agent my-agent
+# → listening on http://localhost:4319  →  https://api.openai.com
+export OPENAI_BASE_URL=http://localhost:4319/v1  # your provider key still authenticates upstream` }],
   },
   ];
+}
+
+/**
+ * "Let the agent install itself" — a ready-to-paste prompt that a coding agent
+ * (Claude Code, Codex, Cursor, …) runs on its own machine to install Effigent.
+ * Tailored per harness: Claude Code is a genuine one-shot self-install via the
+ * SessionEnd hook; OTel harnesses can only arm capture for their NEXT launch
+ * (instrumentation happens at process start, not mid-run) — the prompts say so
+ * honestly. Pre-filled with the collector URL and the workspace key when the
+ * user has minted one.
+ */
+export function agentInstallPrompt(methodKey: string, base: string, tenantKey?: string): string {
+  const COLLECTOR = base || '<dashboard-url>';
+  const KEY = tenantKey ?? '<workspace-key>';
+  const A = 'my-agent';
+
+  const head = `You have shell access to the machine you run on. Install Effigent on yourself — a passive layer that captures this agent's runs so they can be analyzed for cost and turned into optimizations. It does NOT change how you answer and adds no latency to your responses. Work non-interactively and stop on the first error.
+
+Common setup:
+1. npm i -g effigent
+2. effigent login --server ${COLLECTOR} --key ${KEY}
+3. effigent agent add ${A}`;
+
+  const tail: Record<string, string> = {
+    claude: `4. effigent install claude --agent ${A}   (writes a SessionEnd hook into ~/.claude/settings.json; the key stays in ~/.effigent)
+5. Verify: effigent doctor
+
+From your next finished session onward, every run uploads automatically. Paste the output of \`effigent doctor\` back to me. If any step fails, show the exact error and do not retry destructively.`,
+    codex: `4. effigent install codex --agent ${A}   (prints the exact OTEL_* environment block with a scoped key)
+5. Persist that env block to your shell profile / launch config so it is set BEFORE Codex next starts — OpenTelemetry instruments at launch, not mid-run.
+
+Report the env block you added and confirm it will load on next launch. Capture begins on your next run.`,
+    python: `4. pip install traceloop-sdk   (then run \`effigent install python --agent ${A}\` to get your scoped key)
+5. At startup, before any model call, add:
+   from traceloop.sdk import Traceloop
+   Traceloop.init(api_endpoint="${COLLECTOR}", headers={"Authorization": "Bearer <scoped-key>"})
+
+Tell me which file you edited. Capture begins on your next run.`,
+    node: `4. npm i @traceloop/node-server-sdk   (then run \`effigent install node --agent ${A}\` to get your scoped key)
+5. Before your agent runs, add:
+   import * as traceloop from "@traceloop/node-server-sdk";
+   traceloop.initialize({ baseUrl: "${COLLECTOR}", headers: { Authorization: "Bearer <scoped-key>" } });
+
+Tell me which file you edited. Capture begins on your next run.`,
+    proxy: `4. effigent proxy --agent ${A}   (starts a local OpenAI-compatible gateway that forwards to the real upstream and mirrors each call to Effigent)
+5. Point your model client at it: export OPENAI_BASE_URL=http://localhost:4319/v1  (your existing provider key still authenticates upstream)
+
+Confirm the proxy is listening and the base URL is set. Only calls that flow through the proxy are captured.`,
+  };
+
+  return `${head}\n${tail[methodKey] ?? tail.claude}`;
 }
 
 export const routing = {
