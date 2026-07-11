@@ -1,6 +1,6 @@
 # ccopt as a reusable GitHub Action — wrap ANY Claude-based agent command:
 #
-#   - uses: SpectorHacked/ccopt@main
+#   - uses: effigent/effigent@main
 #     with:
 #       agent: dev-teammate:acme/api
 #       command: pnpm --filter @moonshot/cli exec tsx src/run.ts --repo acme/api --requirement "…"

@@ -45,7 +45,7 @@ ccopt ships as a single self-contained file — the only prerequisite is Node 20
 
 ```bash
 # one-liner (or run ./install.sh from a checkout):
-curl -fsSL https://raw.githubusercontent.com/SpectorHacked/ccopt/main/install.sh | sh
+curl -fsSL https://effigent.ai/install.sh | sh
 
 ccopt doctor     # verifies capture, attribution, auth mode, and server reachability
 ccopt analyze    # your first Waste Report, from transcripts you already have
@@ -58,7 +58,7 @@ ccopt analyze    # your first Waste Report, from transcripts you already have
 Whoever owns the workspace runs `ccopt invite [--agent <filter>]` and sends the printed line. The teammate pastes it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SpectorHacked/ccopt/main/install.sh | sh -s -- --join <token>
+curl -fsSL https://effigent.ai/install.sh | sh -s -- --join <token>
 ```
 
 That single command installs ccopt, saves the workspace server + key + attribution rules, schedules a recurring sync (launchd on macOS, cron on Linux — every 15 minutes, filtered so unrelated local sessions stay private), verifies the API key, and uploads their existing history. The token embeds the workspace API key — share it privately.
@@ -66,7 +66,7 @@ That single command installs ccopt, saves the workspace server + key + attributi
 For CI, the repo doubles as a **GitHub Action** (`action.yml`) so wrapping any agent is:
 
 ```yaml
-- uses: SpectorHacked/ccopt@main
+- uses: effigent/effigent@main
   with:
     agent: dev-teammate:acme/api
     command: pnpm --filter @moonshot/cli exec tsx src/run.ts --repo acme/api --requirement "…"
