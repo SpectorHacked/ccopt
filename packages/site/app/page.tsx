@@ -159,7 +159,7 @@ export default function Page() {
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--mono)', fontSize: 12.5, color: 'oklch(0.45 0.012 260)', border: '1px solid oklch(0.87 0.005 90)', borderRadius: 20, padding: '6px 14px', marginBottom: 26 }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green-dot)' }} />Runtime layer for production AI agents
               </div>
-              <div className="h-serif" style={{ fontSize: 'clamp(32px, 8vw, 52px)', lineHeight: 1.12, marginBottom: 22 }}>Stop paying your agents to <b>think twice</b>.</div>
+              <h1 className="h-serif" style={{ fontSize: 'clamp(32px, 8vw, 52px)', lineHeight: 1.12, margin: '0 0 22px' }}>Stop paying your agents to <b>think twice</b>.</h1>
               <div style={{ fontSize: 17, color: 'var(--ink-2)', lineHeight: 1.65, maxWidth: 520, marginBottom: 36 }}>
                 Effigent sits alongside every agent execution, watches which tool calls and reasoning steps never change, and replaces them with cache — no code changes, no new framework.
               </div>
@@ -260,7 +260,7 @@ export default function Page() {
         <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.1fr', gap: 60, alignItems: 'start' }}>
           <div>
             <Eyebrow hue="20">The problem</Eyebrow>
-            <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', lineHeight: 1.25, marginBottom: 16 }}>Every execution starts <b>almost from scratch</b>.</div>
+            <h2 className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', lineHeight: 1.25, margin: '0 0 16px' }}>Every execution starts <b>almost from scratch</b>.</h2>
             <div style={{ fontSize: 15, color: 'var(--ink-2)', lineHeight: 1.6, maxWidth: 380 }}>Agents re-derive the same answers run after run — burning tokens, time, and budget on work they&apos;ve already done.</div>
           </div>
           <div className="problems-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -279,7 +279,7 @@ export default function Page() {
       <Section id="how">
         <Reveal>
         <Eyebrow hue="290">How it works</Eyebrow>
-        <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 44, maxWidth: 640 }}>Every execution becomes a graph. Every graph gets <b>compiled down</b>.</div>
+        <h2 className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', margin: '0 0 44px', maxWidth: 640 }}>Every execution becomes a graph. Every graph gets <b>compiled down</b>.</h2>
 
         <div className="arch-panel" style={{ border: '1px solid var(--line)', borderRadius: 14, padding: '32px 28px 24px', background: 'oklch(0.995 0.002 90)' }}>
           {/* mobile-only slider control — hidden on desktop via CSS */}
@@ -359,7 +359,7 @@ export default function Page() {
         <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.1fr', gap: 60, alignItems: 'center' }}>
           <div>
             <Eyebrow hue="85">Determinism engine</Eyebrow>
-            <div className="h-serif" style={{ fontSize: 'clamp(24px, 5.5vw, 30px)', lineHeight: 1.25, marginBottom: 16 }}>Every node gets a determinism score, <b>0 to 100</b>.</div>
+            <h2 className="h-serif" style={{ fontSize: 'clamp(24px, 5.5vw, 30px)', lineHeight: 1.25, margin: '0 0 16px' }}>Every node gets a determinism score, <b>0 to 100</b>.</h2>
             <div style={{ fontSize: 15, color: 'var(--ink-2)', lineHeight: 1.6 }}>Scored on input/output stability, semantic similarity, historical variance, and repeat frequency — then routed automatically.</div>
           </div>
           <div>
@@ -385,7 +385,7 @@ export default function Page() {
       <Section>
         <Reveal>
           <Eyebrow hue="150">The product</Eyebrow>
-          <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 8, maxWidth: 620 }}>See every run. Then watch it get <b>cheaper</b>.</div>
+          <h2 className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', margin: '0 0 8px', maxWidth: 620 }}>See every run. Then watch it get <b>cheaper</b>.</h2>
           <div style={{ fontSize: 15, color: 'var(--ink-2)', marginBottom: 36, maxWidth: 620 }}>
             Every session lands as a navigable execution graph with per-model cost — and once an agent has history, the determinism engine turns it into concrete optimization actions.
           </div>
@@ -449,7 +449,7 @@ export default function Page() {
       <Section id="install">
         <Reveal>
           <Eyebrow hue="250">Universal installation</Eyebrow>
-          <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 8 }}>Install once. <b>Change nothing.</b></div>
+          <h2 className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', margin: '0 0 8px' }}>Install once. <b>Change nothing.</b></h2>
           <div style={{ fontSize: 15, color: 'var(--ink-2)', marginBottom: 36, maxWidth: 600 }}>
             One scoped key per agent, then pick the capture method for your harness — the engine is identical for every one of them.
           </div>
@@ -477,34 +477,6 @@ export default function Page() {
           <div style={{ fontSize: 15, color: 'oklch(0.68 0.01 260)', marginTop: 28 }}>The compiler for AI agents.</div>
         </div>
       </div>
-
-      {/* PRICING TEASER */}
-      <Section id="pricing">
-        <Reveal>
-          <div style={{ textAlign: 'center', marginBottom: 36 }}>
-            <div style={{ display: 'flex', justifyContent: 'center' }}><Eyebrow hue="150">Pricing</Eyebrow></div>
-            <div className="h-serif" style={{ fontSize: 'clamp(26px, 6vw, 32px)', marginBottom: 10 }}>Start free. <b>Scale when your fleet does.</b></div>
-            <div style={{ fontSize: 15, color: 'var(--ink-2)' }}>Flat plans — never a percentage of your model spend.</div>
-          </div>
-          <div className="tier-mini-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-            {([
-              ['Free', '$0', '2 agents · 1 GB'],
-              ['Starter', '$15/mo', '5 agents · 20 GB'],
-              ['Pro', '$80/mo', '20 agents · 100 GB'],
-              ['Enterprise', 'Custom', 'Unlimited · Talk to us'],
-            ] as Array<[string, string, string]>).map(([name, price, spec]) => (
-              <Link key={name} href="/pricing" className="tier-mini" style={{ display: 'block', border: '1px solid var(--line)', borderRadius: 12, padding: '20px 20px', background: 'oklch(0.995 0.002 90)' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}>{name}</div>
-                <div className="h-serif" style={{ fontSize: 26, marginBottom: 6 }}>{price}</div>
-                <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>{spec}</div>
-              </Link>
-            ))}
-          </div>
-          <div style={{ textAlign: 'center', marginTop: 24 }}>
-            <Link href="/pricing" style={{ fontSize: 14, fontWeight: 600, color: 'oklch(0.4 0.14 250)' }}>Compare all plans &rarr;</Link>
-          </div>
-        </Reveal>
-      </Section>
 
       {/* FOOTER CTA */}
       <div className="cta-pad" style={{ borderTop: '1px solid var(--line)', padding: '90px 32px', textAlign: 'center' }}>
