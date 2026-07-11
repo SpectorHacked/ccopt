@@ -27,11 +27,11 @@ export default function Capture() {
         </p>
         <CodeBlock title="what travels">{`POST ${COLLECTOR_URL}/api/v1/ingest
 Authorization: Bearer <scoped-key>
-x-ccopt-session-id: <session>
+x-effigent-session-id: <session>
 <gzipped JSONL transcript>
 
 # sessions over the ~4.5 MB body cap are pre-parsed client-side
-# and sent as x-ccopt-format: run`}</CodeBlock>
+# and sent as x-effigent-format: run`}</CodeBlock>
       </DocSection>
 
       <DocSection>

@@ -7,26 +7,26 @@
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { parseTranscript, type Run } from '@ccopt/core';
+import { parseTranscript, type Run } from '@effigent/core';
 
-export const CCOPT_HOME = join(homedir(), '.effigent');
-export const AGENT_MAP_PATH = join(CCOPT_HOME, 'agent-map.json');
+export const EFFIGENT_HOME = join(homedir(), '.effigent');
+export const AGENT_MAP_PATH = join(EFFIGENT_HOME, 'agent-map.json');
 /** Where `effigent run --isolated` preserves transcripts when not uploading. */
-export const CCOPT_STORE = join(CCOPT_HOME, 'store');
+export const EFFIGENT_STORE = join(EFFIGENT_HOME, 'store');
 
 export function defaultSource(): string {
   return join(homedir(), '.claude', 'projects');
 }
 
-/** Default scan roots: Claude Code's own store + ccopt's isolated-run store. */
+/** Default scan roots: Claude Code's own store + effigent's isolated-run store. */
 export function defaultSources(): string[] {
-  return [defaultSource(), CCOPT_STORE];
+  return [defaultSource(), EFFIGENT_STORE];
 }
 
 /** Per-session tag files — one file per sessionId so concurrent `effigent run`
  *  wrappers never race on a shared JSON (last-writer-wins clobbering). */
-export const AGENT_TAGS_DIR = join(CCOPT_HOME, 'agent-map.d');
-export const CONFIG_PATH = join(CCOPT_HOME, 'config.json');
+export const AGENT_TAGS_DIR = join(EFFIGENT_HOME, 'agent-map.d');
+export const CONFIG_PATH = join(EFFIGENT_HOME, 'config.json');
 
 export interface AgentRule {
   /** Regex tested against the run's cwd. First match wins. */
@@ -53,7 +53,7 @@ export function loadConfig(): CcoptConfig {
 }
 
 export function saveConfig(config: CcoptConfig): void {
-  mkdirSync(CCOPT_HOME, { recursive: true });
+  mkdirSync(EFFIGENT_HOME, { recursive: true });
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 

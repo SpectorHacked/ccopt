@@ -15,7 +15,7 @@
  * any OpenAI-compatible endpoint via env). See llm.ts.
  */
 
-import { buildRunGraph, mineSegments, toolProfile, type MinedSegment, type Run, type RunGraph, type WasteReport } from '@ccopt/core';
+import { buildRunGraph, mineSegments, toolProfile, type MinedSegment, type Run, type RunGraph, type WasteReport } from '@effigent/core';
 import type { LlmProvider } from './llm.js';
 
 // ─── Per-run digest ───────────────────────────────────────────────────────────
@@ -297,7 +297,7 @@ const INSIGHTS_SCHEMA = {
   },
 };
 
-const SYSTEM_PROMPT = `You are ccopt's cost-optimization agent. You receive telemetry for ONE tenant's AI agent: per-run digests (tool calls, files read, folders listed, web fetches/searches, bash commands, prompt sizes, token/cache economics, canonical step sequences, error/dataflow structure), cross-run mined segments, and procedure clusters with determinism scores.
+const SYSTEM_PROMPT = `You are Effigent's cost-optimization agent. You receive telemetry for ONE tenant's AI agent: per-run digests (tool calls, files read, folders listed, web fetches/searches, bash commands, prompt sizes, token/cache economics, canonical step sequences, error/dataflow structure), cross-run mined segments, and procedure clusters with determinism scores.
 
 Your output is a set of ENGINEERING TICKETS, not advice. Every insight must be implementable by a developer tomorrow morning without further analysis. Generic suggestions ("use caching", "consider a smaller model") are failures.
 

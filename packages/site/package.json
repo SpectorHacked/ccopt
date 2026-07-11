@@ -1,5 +1,5 @@
 {
-  "name": "@ccopt/site",
+  "name": "@effigent/site",
   "version": "0.1.0",
   "private": true,
   "description": "Optimizer marketing site — Next.js (static export for S3/CloudFront).",

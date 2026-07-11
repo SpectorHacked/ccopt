@@ -1,7 +1,7 @@
 import { createPool, migrate } from './db.js';
 
 const db = createPool(
-  process.env.DATABASE_URL ?? 'postgres://ccopt:ccopt@localhost:5433/ccopt',
+  process.env.DATABASE_URL ?? 'postgres://effigent:effigent@localhost:5433/effigent',
 );
 migrate(db)
   .then(() => {

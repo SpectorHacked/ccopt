@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import { parseTranscript, type Run } from '@ccopt/core';
+import { parseTranscript, type Run } from '@effigent/core';
 
 export interface UploadTarget {
   server: string;
@@ -47,8 +47,8 @@ export async function uploadSessionFile(
   const base = target.server.replace(/\/$/, '');
   const authHeaders = {
     authorization: `Bearer ${target.apiKey}`,
-    'x-ccopt-session-id': sessionId,
-    ...(agentId ? { 'x-ccopt-agent-id': agentId } : {}),
+    'x-effigent-session-id': sessionId,
+    ...(agentId ? { 'x-effigent-agent-id': agentId } : {}),
   };
 
   try {
@@ -60,7 +60,7 @@ export async function uploadSessionFile(
       const { json, truncated } = shrinkToFit(run);
       const res = await fetch(`${base}/api/v1/ingest`, {
         method: 'POST',
-        headers: { ...authHeaders, 'content-type': 'application/json', 'x-ccopt-format': 'run' },
+        headers: { ...authHeaders, 'content-type': 'application/json', 'x-effigent-format': 'run' },
         body: json,
       });
       return {

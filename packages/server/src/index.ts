@@ -1,5 +1,5 @@
 /**
- * ccopt SaaS shell — spec §4. Single service: tenant/key admin, gzip ingest,
+ * effigent SaaS shell — spec §4. Single service: tenant/key admin, gzip ingest,
  * batch analyze, server-rendered report viewer, weekly email job.
  */
 
@@ -15,7 +15,7 @@ import {
   type OtlpTracesPayload,
   type Run,
   type WasteReport,
-} from '@ccopt/core';
+} from '@effigent/core';
 import { loadConfig } from './config.js';
 import { createPool, migrate, type Db } from './db.js';
 import { createBlobStore } from './blobs.js';
@@ -248,7 +248,7 @@ app.post('/api/v1/auth/login', async (req, reply) => {
  * shared secret so only our NextAuth server can mint OAuth logins.
  */
 app.post('/api/v1/auth/oauth', async (req, reply) => {
-  const bridge = process.env.CCOPT_AUTH_BRIDGE_SECRET;
+  const bridge = process.env.EFFIGENT_AUTH_BRIDGE_SECRET;
   if (!bridge || req.headers['x-auth-bridge-secret'] !== bridge) {
     return reply.code(401).send({ error: 'unauthorized bridge' });
   }
@@ -288,10 +288,10 @@ app.post('/api/v1/ingest', async (req, reply) => {
   const auth = await authenticate(req.headers.authorization);
   if (!auth) return reply.code(401).send({ error: 'invalid API key' });
 
-  const sessionId = String(req.headers['x-ccopt-session-id'] ?? '');
-  if (!sessionId) return reply.code(400).send({ error: 'x-ccopt-session-id header required' });
-  const agentIdHeader = req.headers['x-ccopt-agent-id']
-    ? String(req.headers['x-ccopt-agent-id'])
+  const sessionId = String(req.headers['x-effigent-session-id'] ?? '');
+  if (!sessionId) return reply.code(400).send({ error: 'x-effigent-session-id header required' });
+  const agentIdHeader = req.headers['x-effigent-agent-id']
+    ? String(req.headers['x-effigent-agent-id'])
     : undefined;
 
   const raw = req.body as Buffer;
@@ -306,7 +306,7 @@ app.post('/api/v1/ingest', async (req, reply) => {
   }
 
   // A scoped agent key binds attribution to its agent — it wins over the
-  // client-supplied x-ccopt-agent-id header (which a leaked/misconfigured key
+  // client-supplied x-effigent-agent-id header (which a leaked/misconfigured key
   // must not be able to spoof).
   const effectiveAgentId = auth.agentName ?? agentIdHeader;
 
@@ -507,7 +507,7 @@ app.post('/api/v1/insights', async (req, reply) => {
     req.log.error({ err }, 'insights generation failed');
     return reply.code(502).send({
       error: `AI analysis failed: ${msg}`,
-      hint: 'Configure the LLM provider env: ANTHROPIC_API_KEY (default), or CCOPT_LLM_PROVIDER=openai-compatible with CCOPT_LLM_BASE_URL/CCOPT_LLM_MODEL/CCOPT_LLM_API_KEY.',
+      hint: 'Configure the LLM provider env: ANTHROPIC_API_KEY (default), or EFFIGENT_LLM_PROVIDER=openai-compatible with EFFIGENT_LLM_BASE_URL/EFFIGENT_LLM_MODEL/EFFIGENT_LLM_API_KEY.',
     });
   }
   } finally {

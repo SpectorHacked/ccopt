@@ -14,10 +14,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { analyzeRuns, renderReportHtml } from '@ccopt/core';
+import { analyzeRuns, renderReportHtml } from '@effigent/core';
 import {
-  CCOPT_HOME,
-  CCOPT_STORE,
+  EFFIGENT_HOME,
+  EFFIGENT_STORE,
   defaultSource,
   defaultSources,
   discoverSessions,
@@ -32,7 +32,7 @@ import {
 import { uploadSessionFile } from './upload.js';
 
 const program = new Command();
-program.name('effigent').description('effigent — the Optimizer CLI: capture agent runs, compile away the waste').version('0.4.0');
+program.name('effigent').description('Effigent — the Optimizer CLI: capture agent runs, compile away the waste').version('0.5.0');
 
 program
   .command('analyze')
@@ -162,7 +162,7 @@ program
       console.log(`! server not reachable right now (${err instanceof Error ? err.message : err}) — sync will retry on schedule`);
     }
 
-    // Schedule the recurring sync with THIS node + THIS ccopt (absolute paths:
+    // Schedule the recurring sync with THIS node + THIS effigent (absolute paths:
     // launchd/cron have no nvm/homebrew PATH).
     const nodeBin = process.execPath;
     const cliBin = resolve(process.argv[1]);
@@ -182,13 +182,13 @@ ${args.map((a) => `    <string>${a}</string>`).join('\n')}
   </array>
   <key>StartInterval</key><integer>900</integer>
   <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>${join(CCOPT_HOME, 'sync.log')}</string>
-  <key>StandardErrorPath</key><string>${join(CCOPT_HOME, 'sync.log')}</string>
+  <key>StandardOutPath</key><string>${join(EFFIGENT_HOME, 'sync.log')}</string>
+  <key>StandardErrorPath</key><string>${join(EFFIGENT_HOME, 'sync.log')}</string>
 </dict>
 </plist>
 `;
       mkdirSync(dirname(plistPath), { recursive: true });
-      mkdirSync(CCOPT_HOME, { recursive: true });
+      mkdirSync(EFFIGENT_HOME, { recursive: true });
       writeFileSync(plistPath, plist);
       const uid = process.getuid?.() ?? 501;
       spawnSync('launchctl', ['bootout', `gui/${uid}/com.effigent.sync`], { stdio: 'ignore' });
@@ -199,10 +199,10 @@ ${args.map((a) => `    <string>${a}</string>`).join('\n')}
           : `! could not load launchd job (${boot.stderr?.trim()}) — plist written to ${plistPath}`,
       );
     } else {
-      const cronLine = `*/15 * * * * ${nodeBin} ${cliBin} ${syncArgs.join(' ')} >> ${join(CCOPT_HOME, 'sync.log')} 2>&1`;
+      const cronLine = `*/15 * * * * ${nodeBin} ${cliBin} ${syncArgs.join(' ')} >> ${join(EFFIGENT_HOME, 'sync.log')} 2>&1`;
       const current = spawnSync('crontab', ['-l'], { encoding: 'utf8' });
       const existing = current.status === 0 ? current.stdout : '';
-      if (existing.includes('ccopt') && existing.includes('sync')) {
+      if (existing.includes('effigent') && existing.includes('sync')) {
         console.log('✓ scheduled: crontab already has a effigent sync entry');
       } else {
         const set = spawnSync('crontab', ['-'], { input: `${existing.trimEnd()}\n${cronLine}\n`, encoding: 'utf8' });
@@ -238,10 +238,10 @@ program
   )
   .action(async (opts) => {
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
-    const apiKey: string | undefined = opts.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
+    const server: string | undefined = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+    const apiKey: string | undefined = opts.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
     if (!server || !apiKey) {
-      console.error('No server/key: pass --server/--key, set CCOPT_SERVER/CCOPT_API_KEY, or run `effigent login`.');
+      console.error('No server/key: pass --server/--key, set EFFIGENT_SERVER/EFFIGENT_API_KEY, or run `effigent login`.');
       process.exitCode = 2;
       return;
     }
@@ -266,7 +266,7 @@ program
     // State is per server+key: the same session must upload once per tenant,
     // not once globally (switching tenants must not silently skip history).
     const target = createHash('sha256').update(`${server}|${apiKey}`).digest('hex').slice(0, 12);
-    const statePath = `${CCOPT_HOME}/sync-state-${target}.json`;
+    const statePath = `${EFFIGENT_HOME}/sync-state-${target}.json`;
     let state: Record<string, number> = {};
     try {
       state = JSON.parse(readFileSync(statePath, 'utf8'));
@@ -293,7 +293,7 @@ program
       state[s.sessionId] = s.mtimeMs;
       uploaded++;
     }
-    mkdirSync(CCOPT_HOME, { recursive: true });
+    mkdirSync(EFFIGENT_HOME, { recursive: true });
     writeFileSync(statePath, JSON.stringify(state, null, 2));
     console.log(`Synced ${uploaded} session(s), ${skipped} already up to date.`);
   });
@@ -301,8 +301,8 @@ program
 program
   .command('doctor')
   .description('Check that effigent can capture, attribute, and (optionally) upload on this machine')
-  .option('--server <url>', 'ccopt server to check (env CCOPT_SERVER)')
-  .option('--key <apiKey>', 'tenant API key to verify (env CCOPT_API_KEY)')
+  .option('--server <url>', 'effigent server to check (env EFFIGENT_SERVER)')
+  .option('--key <apiKey>', 'tenant API key to verify (env EFFIGENT_API_KEY)')
   .action(async (opts) => {
     let failures = 0;
     const ok = (msg: string) => console.log(`  ✓ ${msg}`);
@@ -352,8 +352,8 @@ program
       );
 
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
-    const apiKey: string | undefined = opts.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
+    const server: string | undefined = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+    const apiKey: string | undefined = opts.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
     if (server) {
       try {
         const health = await fetch(`${server.replace(/\/$/, '')}/healthz`);
@@ -364,13 +364,13 @@ program
           });
           auth.ok ? ok('API key accepted') : bad(`API key rejected: HTTP ${auth.status}`);
         } else {
-          warn('no API key provided — skipping auth check (set CCOPT_API_KEY)');
+          warn('no API key provided — skipping auth check (set EFFIGENT_API_KEY)');
         }
       } catch (err) {
         bad(`cannot reach ${server}: ${err instanceof Error ? err.message : err}`);
       }
     } else {
-      warn('no server configured — local-only mode (set CCOPT_SERVER to check upload path)');
+      warn('no server configured — local-only mode (set EFFIGENT_SERVER to check upload path)');
     }
 
     console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
@@ -402,17 +402,17 @@ program
       'Requires env-based auth (ANTHROPIC_API_KEY / Bedrock / Vertex) or file-based credentials; ' +
       'macOS keychain logins do not carry over.',
   )
-  .option('--server <url>', 'ccopt server to upload captured sessions to (env CCOPT_SERVER)')
-  .option('--key <apiKey>', 'tenant API key for --server (env CCOPT_API_KEY)')
+  .option('--server <url>', 'effigent server to upload captured sessions to (env EFFIGENT_SERVER)')
+  .option('--key <apiKey>', 'tenant API key for --server (env EFFIGENT_API_KEY)')
   .allowUnknownOption(true)
   .argument('<cmd...>', 'command to execute, e.g. -- claude -p "…" or -- node my-agent.js')
   .action(async (cmd: string[], opts) => {
     const argv = [...cmd];
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
-    const apiKey: string | undefined = opts.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
+    const server: string | undefined = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+    const apiKey: string | undefined = opts.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
     if (server && !apiKey) {
-      console.error('[effigent] --server requires --key (or CCOPT_API_KEY)');
+      console.error('[effigent] --server requires --key (or EFFIGENT_API_KEY)');
       process.exitCode = 2;
       return;
     }
@@ -472,11 +472,11 @@ program
     }
 
     // Isolated transcripts would vanish with the temp dir — preserve them locally
-    // so `effigent analyze` still sees them (defaultSources includes CCOPT_STORE).
+    // so `effigent analyze` still sees them (defaultSources includes EFFIGENT_STORE).
     if (isoDir) {
       for (const s of produced) {
         const rel = s.path.slice(watchDir.length + 1);
-        const dest = join(CCOPT_STORE, rel);
+        const dest = join(EFFIGENT_STORE, rel);
         mkdirSync(dirname(dest), { recursive: true });
         copyFileSync(s.path, dest);
       }
@@ -500,8 +500,8 @@ agentCmd
   .option('--key <apiKey>', 'tenant OWNER key (default: effigent login config)')
   .action(async (name: string, opts) => {
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
-    const apiKey: string | undefined = opts.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
+    const server: string | undefined = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+    const apiKey: string | undefined = opts.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
     if (!server || !apiKey) {
       console.error('No server/key: run `effigent login` first (owner key), or pass --server/--key.');
       process.exitCode = 2;
@@ -599,7 +599,7 @@ const OTEL_HARNESSES: Record<string, { title: string; render: (base: string, key
 function printOtelInstall(harness: string, agentName: string): void {
   const config = loadConfig();
   const entry = config.agents?.[agentName];
-  const server: string | undefined = (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+  const server: string | undefined = process.env.EFFIGENT_SERVER ?? config.server;
   if (!entry || !server) {
     console.error(`Agent '${agentName}' not registered here — run \`effigent agent add ${agentName}\` first.`);
     process.exitCode = 2;
@@ -683,12 +683,12 @@ program
   .requiredOption('--agent <name>', 'registered agent name')
   .action(async (opts) => {
     try {
-      const bundleDir = join(CCOPT_HOME, 'bundles', slugify(opts.agent));
+      const bundleDir = join(EFFIGENT_HOME, 'bundles', slugify(opts.agent));
       const bundlePath = join(bundleDir, 'bundle.json');
       // Throttle: at most one refresh per 15 minutes.
       if (existsSync(bundlePath) && Date.now() - statSync(bundlePath).mtimeMs < 15 * 60_000) return;
       const config = loadConfig();
-      const server: string | undefined = (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+      const server: string | undefined = process.env.EFFIGENT_SERVER ?? config.server;
       const apiKey: string | undefined = config.agents?.[opts.agent]?.key ?? config.apiKey;
       if (!server || !apiKey) return;
       const ctl = new AbortController();
@@ -726,7 +726,7 @@ program
   .action(async (opts) => {
     const config = loadConfig();
     const entry = config.agents?.[opts.agent];
-    const server: string | undefined = (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+    const server: string | undefined = process.env.EFFIGENT_SERVER ?? config.server;
     if (!entry || !server) {
       console.error(`[effigent] claude-hook: agent '${opts.agent}' or server not configured`);
       process.exitCode = 2;
@@ -909,9 +909,9 @@ program
   .option('--no-mark', 'do not stamp the agent as optimized')
   .action(async (agentName: string, opts) => {
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+    const server: string | undefined = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
     const apiKey: string | undefined =
-      opts.key ?? config.agents?.[agentName]?.key ?? (process.env.EFFIGENT_API_KEY ?? process.env.CCOPT_API_KEY) ?? config.apiKey;
+      opts.key ?? config.agents?.[agentName]?.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
     if (!server || !apiKey) {
       console.error('No server/key: run `effigent login` (or `effigent agent add`) first, or pass --server/--key.');
       process.exitCode = 2;
@@ -937,7 +937,7 @@ program
     const bundle = (await res.json()) as Bundle;
     if (bundle.note) console.log(`! ${bundle.note}`);
 
-    const outDir = resolve(opts.out ?? join(CCOPT_HOME, 'bundles', slugify(agentName)));
+    const outDir = resolve(opts.out ?? join(EFFIGENT_HOME, 'bundles', slugify(agentName)));
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, 'bundle.json'), JSON.stringify(bundle, null, 2));
     // Harness-neutral injection surface: any agent (Python SDK, Docker, custom)
@@ -1104,7 +1104,7 @@ program
   .argument('[params...]', 'parameter values, in the order listed by the skill')
   .option('-v, --verbose', 'print per-step trace to stderr')
   .action(async (agentName: string, toolName: string, params: string[], opts) => {
-    const bundlePath = join(CCOPT_HOME, 'bundles', slugify(agentName), 'bundle.json');
+    const bundlePath = join(EFFIGENT_HOME, 'bundles', slugify(agentName), 'bundle.json');
     if (!existsSync(bundlePath)) {
       console.error(`No bundle for '${agentName}' — run \`effigent optimize ${agentName}\` first.`);
       process.exitCode = 2;
@@ -1192,7 +1192,7 @@ program
     const { createServer } = await import('node:http');
     const { Readable } = await import('node:stream');
     const config = loadConfig();
-    const server: string | undefined = opts.server ?? (process.env.EFFIGENT_SERVER ?? process.env.CCOPT_SERVER) ?? config.server;
+    const server: string | undefined = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
     const apiKey: string | undefined = opts.key ?? config.agents?.[opts.agent]?.key ?? config.apiKey;
     if (!server || !apiKey) {
       console.error('No server/key: run `effigent login` / `effigent agent add` first, or pass --server/--key.');

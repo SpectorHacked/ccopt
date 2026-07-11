@@ -1,4 +1,4 @@
-# ccopt server — single container. Postgres and blob storage are external
+# effigent server — single container. Postgres and blob storage are external
 # (DATABASE_URL + CCOPT_S3_* env; falls back to local disk for blobs).
 FROM node:22-alpine AS build
 WORKDIR /app
@@ -9,7 +9,7 @@ COPY packages/server/package.json packages/server/
 RUN npm ci
 COPY tsconfig.base.json ./
 COPY packages ./packages
-RUN npm run build -w @ccopt/core -w @ccopt/server && npm prune --omit=dev
+RUN npm run build -w @effigent/core -w @effigent/server && npm prune --omit=dev
 
 FROM node:22-alpine
 ENV NODE_ENV=production

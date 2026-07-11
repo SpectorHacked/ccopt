@@ -13,7 +13,7 @@
  *
  * Usage:
  *   PROD_DATABASE_URL="postgres://…?sslmode=require" \
- *     node scripts/smoke-test.mjs https://ccopt-dashboard-wyvz.vercel.app
+ *     node scripts/smoke-test.mjs https://app.effigent.ai
  */
 import pg from 'pg';
 import { randomBytes, createHash } from 'node:crypto';
@@ -75,7 +75,7 @@ try {
   ].map((l) => JSON.stringify(l)).join('\n');
   const ing = await fetch(`${BASE}/api/v1/ingest`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${scopedKey}`, 'content-type': 'application/octet-stream', 'x-ccopt-session-id': SESSION, 'x-ccopt-agent-id': 'spoofed-name' },
+    headers: { authorization: `Bearer ${scopedKey}`, 'content-type': 'application/octet-stream', 'x-effigent-session-id': SESSION, 'x-effigent-agent-id': 'spoofed-name' },
     body: gzipSync(Buffer.from(jsonl)),
   });
   const ingBody = await ing.json().catch(() => ({}));

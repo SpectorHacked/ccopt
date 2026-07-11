@@ -1,4 +1,4 @@
--- ccopt SaaS control plane — spec §4: "One managed Postgres, ~8 tables, no exotica."
+-- effigent SaaS control plane — spec §4: "One managed Postgres, ~8 tables, no exotica."
 -- Content (raw transcripts, rendered HTML) lives in the blob store; Postgres holds
 -- metadata + cluster/finding rows + pointers.
 

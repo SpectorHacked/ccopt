@@ -67,7 +67,7 @@ function toUsage(u: NonNullable<TranscriptLine['message']>['usage']): TokenUsage
 }
 
 export interface ParseOptions {
-  /** Override the agentId (e.g. from a `ccopt run --agent` tag). */
+  /** Override the agentId (e.g. from a `effigent run --agent` tag). */
   agentId?: string;
   /** Fallback agent id when cwd is missing. */
   defaultAgentId?: string;

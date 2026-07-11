@@ -5,7 +5,7 @@
  */
 
 import { gzipSync } from 'node:zlib';
-import { analyzeRuns, renderReportHtml, type Run } from '@ccopt/core';
+import { analyzeRuns, renderReportHtml, type Run } from '@effigent/core';
 import type { Db } from './db.js';
 import type { BlobStore } from './blobs.js';
 import { sanitizeForJsonb } from './jsonb.js';

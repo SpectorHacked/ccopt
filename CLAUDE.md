@@ -18,11 +18,11 @@ npm workspaces (`packages/*`). TypeScript throughout; ESM (`.js` import specifie
 
 | Package | What it is | Runtime / host |
 |---|---|---|
-| `@ccopt/core` | Pure TS engine: transcript/OTel → `Run` → `RunGraph` (DAG), clustering, cost, taxonomy, **determinism scoring**. No I/O. | library |
-| `@ccopt/server` | Fastify API: ingest, agents/keys, insights (LLM), analyze, reports, viewers. **Being retired** (see §6). | Node (Render) |
-| `@ccopt/cli` | `effigent` CLI (npm: `effigent`): `login`, `agent add/list`, `run` (wrap ANY agent command), `install claude` (SessionEnd hook) + `install otel/codex/python/node` (key-filled OTel recipes per harness — table-driven, one entry per new harness), `claude-hook`, upload. | Node |
-| `@ccopt/dashboard` | Next.js App Router dashboard + its own API routes. The product UI. | Vercel |
-| `@ccopt/site` | Marketing site, Next.js **static export** (`output: 'export'`). Pages: `/` (landing), `/docs` (+6 doc pages), `/developers` (full per-harness install guide), `/about`, `/pricing`, `/security` (redaction + posture), `/terms`, `/privacy`. Endpoints are env-driven: `NEXT_PUBLIC_COLLECTOR_URL` / `NEXT_PUBLIC_DASHBOARD_URL` (set as GitHub `prod` environment Variables `COLLECTOR_URL`/`DASHBOARD_URL`, injected in the deploy workflow; unset → explicit `<placeholder>`) — never hardcode domains. | S3 + CloudFront |
+| `@effigent/core` | Pure TS engine: transcript/OTel → `Run` → `RunGraph` (DAG), clustering, cost, taxonomy, **determinism scoring**. No I/O. | library |
+| `@effigent/server` | Fastify API: ingest, agents/keys, insights (LLM), analyze, reports, viewers. **Being retired** (see §6). | Node (Render) |
+| `@effigent/cli` | `effigent` CLI (npm: `effigent`): `login`, `agent add/list`, `run` (wrap ANY agent command), `install claude` (SessionEnd hook) + `install otel/codex/python/node` (key-filled OTel recipes per harness — table-driven, one entry per new harness), `claude-hook`, upload. | Node |
+| `@effigent/dashboard` | Next.js App Router dashboard + its own API routes. The product UI. | Vercel |
+| `@effigent/site` | Marketing site, Next.js **static export** (`output: 'export'`). Pages: `/` (landing), `/docs` (+6 doc pages), `/developers` (full per-harness install guide), `/about`, `/pricing`, `/security` (redaction + posture), `/terms`, `/privacy`. Endpoints are env-driven: `NEXT_PUBLIC_COLLECTOR_URL` / `NEXT_PUBLIC_DASHBOARD_URL` (set as GitHub `prod` environment Variables `COLLECTOR_URL`/`DASHBOARD_URL`, injected in the deploy workflow; unset → explicit `<placeholder>`) — never hardcode domains. | S3 + CloudFront |
 
 The engine (`core`) is deliberately I/O-free so both capture paths (Claude transcripts
 and OTLP spans) produce the **same `Run`**, and everything downstream is unchanged.
@@ -205,11 +205,11 @@ Styling: `theme.css` (design tokens as CSS vars, dark theme).
 live as Next.js routes, Bearer-authenticated with `cck_` keys (public in `middleware.ts`;
 auth inside the handlers):
 - `POST /api/v1/ingest` — gzipped/plain Claude JSONL (gzip sniffed by magic bytes since
-  proxies strip content-encoding); scoped key beats the `x-ccopt-agent-id` header.
+  proxies strip content-encoding); scoped key beats the `x-effigent-agent-id` header.
   ~4.5 MB Vercel body cap — CLI gzips, so almost all sessions fit.
 - `POST /v1/traces` — OTLP/HTTP GenAI JSON (uncompressed; 415 with a hint otherwise).
 - `POST /api/v1/agents` — CLI registration: tenant key → upsert agent + mint scoped key.
-- `GET /api/v1/reports` — key validation (`ccopt login` probes it).
+- `GET /api/v1/reports` — key validation (`effigent login` probes it).
 The engine bits these need are **vendored** in `dashboard/src/lib/engine/`
 (types/cost/canonicalize/transcript/otel/graph/taxonomy/align/determinism/provenance/
 synthesize/replay/embed/drift/knowledge/redact/jsonb — copies of core with `.js`→`.ts` import specifiers;
@@ -283,7 +283,7 @@ The "brain" turns observed runs into activated optimizations. Sequenced:
 
 ```
 npm install                              # bootstrap workspaces
-npm run -w @ccopt/dashboard build        # typecheck + build the dashboard
-npm run -w @ccopt/dashboard dev          # local dashboard (needs .env.local)
-npm run -w @ccopt/core build             # build the engine (dist/)
+npm run -w @effigent/dashboard build        # typecheck + build the dashboard
+npm run -w @effigent/dashboard dev          # local dashboard (needs .env.local)
+npm run -w @effigent/core build             # build the engine (dist/)
 ```

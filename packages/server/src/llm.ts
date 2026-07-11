@@ -1,14 +1,14 @@
 /**
- * LLM provider abstraction for the insights agent. ccopt's analysis must not
+ * LLM provider abstraction for the insights agent. effigent's analysis must not
  * be locked to one vendor: the default is Anthropic (official SDK), and any
  * OpenAI-compatible endpoint (OpenAI, Azure, Groq, Ollama, vLLM…) works via
  * one generic implementation.
  *
  * Selection (env):
- *   CCOPT_LLM_PROVIDER   anthropic (default) | openai-compatible
- *   CCOPT_LLM_MODEL      default: claude-opus-4-8 (anthropic) — required for openai-compatible
- *   CCOPT_LLM_BASE_URL   openai-compatible only, e.g. https://api.openai.com/v1
- *   CCOPT_LLM_API_KEY    falls back to ANTHROPIC_API_KEY / OPENAI_API_KEY
+ *   EFFIGENT_LLM_PROVIDER   anthropic (default) | openai-compatible
+ *   EFFIGENT_LLM_MODEL      default: claude-opus-4-8 (anthropic) — required for openai-compatible
+ *   EFFIGENT_LLM_BASE_URL   openai-compatible only, e.g. https://api.openai.com/v1
+ *   EFFIGENT_LLM_API_KEY    falls back to ANTHROPIC_API_KEY / OPENAI_API_KEY
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -96,20 +96,20 @@ class OpenAiCompatibleProvider implements LlmProvider {
 }
 
 export function createLlmProvider(env: NodeJS.ProcessEnv): LlmProvider {
-  const provider = env.CCOPT_LLM_PROVIDER ?? 'anthropic';
+  const provider = env.EFFIGENT_LLM_PROVIDER ?? 'anthropic';
   if (provider === 'openai-compatible') {
-    const model = env.CCOPT_LLM_MODEL;
-    const baseUrl = env.CCOPT_LLM_BASE_URL;
+    const model = env.EFFIGENT_LLM_MODEL;
+    const baseUrl = env.EFFIGENT_LLM_BASE_URL;
     if (!model || !baseUrl) {
-      throw new Error('openai-compatible provider needs CCOPT_LLM_MODEL and CCOPT_LLM_BASE_URL');
+      throw new Error('openai-compatible provider needs EFFIGENT_LLM_MODEL and EFFIGENT_LLM_BASE_URL');
     }
-    return new OpenAiCompatibleProvider(model, baseUrl, env.CCOPT_LLM_API_KEY ?? env.OPENAI_API_KEY);
+    return new OpenAiCompatibleProvider(model, baseUrl, env.EFFIGENT_LLM_API_KEY ?? env.OPENAI_API_KEY);
   }
   if (provider === 'anthropic') {
     return new AnthropicProvider(
-      env.CCOPT_LLM_MODEL ?? 'claude-opus-4-8',
-      env.CCOPT_LLM_API_KEY ?? env.ANTHROPIC_API_KEY,
+      env.EFFIGENT_LLM_MODEL ?? 'claude-opus-4-8',
+      env.EFFIGENT_LLM_API_KEY ?? env.ANTHROPIC_API_KEY,
     );
   }
-  throw new Error(`unknown CCOPT_LLM_PROVIDER: ${provider}`);
+  throw new Error(`unknown EFFIGENT_LLM_PROVIDER: ${provider}`);
 }

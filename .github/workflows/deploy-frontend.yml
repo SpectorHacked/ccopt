@@ -30,7 +30,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run -w @ccopt/site build
+      - run: npm run -w @effigent/site build
         env:
           # Real endpoints, injected at build time (GitHub → Settings → Environments →
           # prod → Variables). Unset → snippets show an explicit <placeholder>.

@@ -3052,7 +3052,9 @@ var PRICING_TABLE = [
   { match: /fable/i, pricing: { inputPerM: 25, outputPerM: 125 } },
   { match: /opus/i, pricing: { inputPerM: 15, outputPerM: 75 } },
   { match: /sonnet/i, pricing: { inputPerM: 3, outputPerM: 15 } },
-  { match: /haiku/i, pricing: { inputPerM: 0.8, outputPerM: 4 } }
+  { match: /haiku/i, pricing: { inputPerM: 0.8, outputPerM: 4 } },
+  { match: /gpt-4o-mini/i, pricing: { inputPerM: 0.15, outputPerM: 0.6 } },
+  { match: /gpt-4o/i, pricing: { inputPerM: 2.5, outputPerM: 10 } }
 ];
 var FALLBACK = { inputPerM: 3, outputPerM: 15 };
 function pricingFor(model) {
@@ -3117,6 +3119,42 @@ var RE_LONE_HI_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g;
 var RE_LONE_LO_SURROGATE = /(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 function stripControlChars(input) {
   return input.replace(RE_CONTROL, "").replace(RE_LONE_HI_SURROGATE, "").replace(RE_LONE_LO_SURROGATE, "");
+}
+function normalizeWs(input) {
+  return stripControlChars(input).replace(/\s+/g, " ").trim();
+}
+function jsonTypeChar(v) {
+  if (v === null || v === void 0)
+    return "z";
+  if (typeof v === "string")
+    return "s";
+  if (typeof v === "number")
+    return "n";
+  if (typeof v === "boolean")
+    return "b";
+  return Array.isArray(v) ? "a" : "o";
+}
+function structLabelOf(kind, name, payload, isError) {
+  switch (kind) {
+    case "tool_use": {
+      try {
+        const input = JSON.parse(payload);
+        if (input && typeof input === "object" && !Array.isArray(input)) {
+          const schema = Object.keys(input).sort().map((k) => `${k}:${jsonTypeChar(input[k])}`).join(",");
+          return `tool:${name}(${schema})`;
+        }
+        return `tool:${name}(${jsonTypeChar(input)})`;
+      } catch {
+        return `tool:${name}(raw)`;
+      }
+    }
+    case "tool_result":
+      return `result:${name}:${isError ? "err" : "ok"}`;
+    case "thinking":
+      return "think";
+    default:
+      return `llm:${name}`;
+  }
 }
 function canonicalizeText(input) {
   let s = stripControlChars(input);
@@ -3285,27 +3323,39 @@ function parseTranscript(jsonl, options = {}) {
         legacyCostUsd += obj.costUSD;
       if (msg.model)
         models.add(msg.model);
+      let tokensToAttach;
       if (msg.usage && msg.model) {
         const key = obj.requestId ?? obj.uuid ?? `${obj.timestamp}`;
         if (!seenUsageKeys.has(key)) {
           seenUsageKeys.add(key);
           hasUsage = true;
-          usageByModel[msg.model] = addUsage(usageByModel[msg.model] ?? emptyUsage(), toUsage(msg.usage));
+          const u = toUsage(msg.usage);
+          usageByModel[msg.model] = addUsage(usageByModel[msg.model] ?? emptyUsage(), u);
+          tokensToAttach = {
+            input: u.inputTokens,
+            output: u.outputTokens,
+            cacheCreation: u.cacheCreationInputTokens,
+            cacheRead: u.cacheReadInputTokens
+          };
         }
       }
+      const pushAssistantStep = (step) => {
+        steps.push({ ...step, model: msg.model, tokens: tokensToAttach });
+        tokensToAttach = void 0;
+      };
       const content = msg.content;
       if (Array.isArray(content)) {
         for (const block of content) {
           const b = block;
           if (b.type === "text" && b.text?.trim()) {
             finalOutput = b.text;
-            steps.push({ kind: "model_turn", name: "assistant", payload: b.text, timestamp: obj.timestamp });
+            pushAssistantStep({ kind: "model_turn", name: "assistant", payload: b.text, timestamp: obj.timestamp });
           } else if (b.type === "thinking") {
-            steps.push({ kind: "thinking", name: "assistant", payload: "", timestamp: obj.timestamp });
+            pushAssistantStep({ kind: "thinking", name: "assistant", payload: "", timestamp: obj.timestamp });
           } else if (b.type === "tool_use" && b.name) {
             if (b.id)
               toolNameById.set(b.id, b.name);
-            steps.push({
+            pushAssistantStep({
               kind: "tool_use",
               name: b.name,
               payload: JSON.stringify(b.input ?? {}),
@@ -3348,6 +3398,16 @@ function parseTranscript(jsonl, options = {}) {
 
 // packages/core/dist/graph.js
 var import_node_crypto2 = require("node:crypto");
+function stepCostUsd(model, tokens) {
+  if (!model || !tokens)
+    return 0;
+  return usageCostUsd(model, {
+    inputTokens: tokens.input,
+    outputTokens: tokens.output,
+    cacheCreationInputTokens: tokens.cacheCreation ?? 0,
+    cacheReadInputTokens: tokens.cacheRead ?? 0
+  });
+}
 function sha256(s) {
   return (0, import_node_crypto2.createHash)("sha256").update(s).digest("hex");
 }
@@ -3403,9 +3463,18 @@ function buildRunGraph(run) {
       index: nodes.length,
       kind: step.kind,
       label,
+      structLabel: structLabelOf(step.kind, step.name, step.payload, step.isError),
       canonicalValue,
+      // Hash of the FULL stored payload (whitespace-normalized only): value
+      // agreement must not be blind to numbers or to bytes past a display slice.
+      valueHash: sha256(normalizeWs(step.payload)),
       isError: step.isError === true,
-      raw: step.payload.slice(0, 4e3)
+      raw: step.payload.slice(0, 4e3),
+      toolUseId: step.toolUseId,
+      model: step.model,
+      costUsd: stepCostUsd(step.model, step.tokens),
+      tokensIn: step.tokens?.input,
+      tokensOut: step.tokens?.output
     });
   }
   const edges = [];
@@ -3513,6 +3582,169 @@ function clusterFamilies(shapes, options = {}) {
   return assignment;
 }
 
+// packages/core/dist/taxonomy.js
+var MECHANICAL_TOOLS = /* @__PURE__ */ new Set([
+  "read",
+  "glob",
+  "grep",
+  "ls",
+  "notebookread",
+  "toolsearch",
+  "tasklist",
+  "taskget"
+]);
+var CACHEABLE_TOOLS = /* @__PURE__ */ new Set(["webfetch", "web_fetch", "websearch", "web_search"]);
+var SIDE_EFFECT_TOOLS = /* @__PURE__ */ new Set([
+  "write",
+  "edit",
+  "multiedit",
+  "notebookedit",
+  "taskcreate",
+  "taskupdate",
+  "sendmessage"
+]);
+var GENERATIVE_TOOLS = /* @__PURE__ */ new Set(["task", "agent", "workflow", "skill", "advisor"]);
+var RO_BASH = /^\s*(ls|cat|head|tail|wc|grep|rg|find|pwd|which|whoami|echo|printf|stat|du|df|ps|env|printenv|jq|yq|sort|uniq|cut|awk|sed -n|tr|diff|cmp|file|basename|dirname|realpath|readlink|md5|shasum|sha256sum|git (status|log|diff|show|branch|remote|rev-parse|describe|blame|ls-files)|npm (ls|view|outdated)|node --version|python3? --version|curl (-s+ )?-?-head|type)\b/i;
+var FETCH_BASH = /^\s*(curl|wget|http)\b(?![^|]*(-X\s*(POST|PUT|DELETE|PATCH)|--data|-d\s))/i;
+function classifyBashCommand(command) {
+  const stages = command.split(/\||&&|;/).map((s) => s.trim()).filter(Boolean);
+  let cls = "mechanical";
+  for (const stage of stages) {
+    if (RO_BASH.test(stage))
+      continue;
+    if (FETCH_BASH.test(stage)) {
+      if (cls === "mechanical")
+        cls = "cacheable";
+      continue;
+    }
+    return "side_effect";
+  }
+  return cls;
+}
+function classifyStep(step) {
+  if (step.kind === "model_turn" || step.kind === "thinking")
+    return "generative";
+  if (step.kind === "tool_result")
+    return classifyStep({ ...step, kind: "tool_use" });
+  const name = step.name.toLowerCase();
+  if (MECHANICAL_TOOLS.has(name))
+    return "mechanical";
+  if (CACHEABLE_TOOLS.has(name))
+    return "cacheable";
+  if (SIDE_EFFECT_TOOLS.has(name))
+    return "side_effect";
+  if (GENERATIVE_TOOLS.has(name))
+    return "generative";
+  if (name === "bash" || name === "shell") {
+    try {
+      const input = JSON.parse(step.payload);
+      if (typeof input.command === "string")
+        return classifyBashCommand(input.command);
+    } catch {
+    }
+    return "side_effect";
+  }
+  return "side_effect";
+}
+function classifyNode(node) {
+  const name = node.label.startsWith("tool:") ? node.label.slice(5).split(" ")[0] : node.label.startsWith("result:") ? node.label.slice(7).split(" ")[0] : node.label.split(":")[0];
+  const kind = node.label.startsWith("tool:") ? "tool_use" : node.label.startsWith("result:") ? "tool_result" : node.label === "thinking" ? "thinking" : "model_turn";
+  return classifyStep({ kind, name, payload: node.raw });
+}
+
+// packages/core/dist/determinism.js
+function tokenize(s) {
+  return s.split(/([\s"{}[\],:/?&=]+)/).filter((t) => t.length > 0);
+}
+var SEPARATOR_RE = /^[\s"{}[\],:/?&=]+$/;
+function isSeparatorToken(t) {
+  return SEPARATOR_RE.test(t);
+}
+var SLOT_MARK = "\u27E8\xB7\u27E9";
+function commonAffixes(values) {
+  let prefix = values[0];
+  for (const v of values) {
+    let k = 0;
+    while (k < prefix.length && k < v.length && prefix[k] === v[k])
+      k++;
+    prefix = prefix.slice(0, k);
+    if (!prefix)
+      break;
+  }
+  const minLen = Math.min(...values.map((v) => v.length));
+  let suffix = values[0];
+  for (const v of values) {
+    let k = 0;
+    while (k < suffix.length && k < v.length && suffix[suffix.length - 1 - k] === v[v.length - 1 - k])
+      k++;
+    suffix = suffix.slice(suffix.length - k);
+    if (!suffix)
+      break;
+  }
+  if (prefix.length + suffix.length > minLen) {
+    suffix = suffix.slice(Math.min(suffix.length, prefix.length + suffix.length - minLen));
+  }
+  return { prefix, suffix };
+}
+function columnTemplate(values) {
+  const present = values.filter((v) => v !== null);
+  if (present.length < 2)
+    return null;
+  const toks = present.map(tokenize);
+  const lenCounts = /* @__PURE__ */ new Map();
+  for (const t of toks)
+    lenCounts.set(t.length, (lenCounts.get(t.length) ?? 0) + 1);
+  let modalLen = 0;
+  let bestN = 0;
+  for (const [len, n] of lenCounts)
+    if (n > bestN) {
+      bestN = n;
+      modalLen = len;
+    }
+  const sameLen = toks.filter((t) => t.length === modalLen);
+  if (modalLen === 0 || sameLen.length < present.length * 0.7)
+    return null;
+  const volatile = new Array(modalLen).fill(false);
+  const affixes = new Array(modalLen).fill(null);
+  const parts = [];
+  let sigConstant = 0;
+  let sigTotal = 0;
+  let slots = 0;
+  for (let j = 0; j < modalLen; j++) {
+    const col = sameLen.map((t) => t[j]);
+    if (col.every((x) => x === col[0])) {
+      parts.push(col[0]);
+      if (!isSeparatorToken(col[0])) {
+        sigConstant += 1;
+        sigTotal += 1;
+      }
+    } else {
+      volatile[j] = true;
+      slots += 1;
+      sigTotal += 1;
+      const { prefix, suffix } = commonAffixes(col);
+      affixes[j] = { prefix, suffix };
+      parts.push(`${prefix}${SLOT_MARK}${suffix}`);
+    }
+  }
+  const slotValues = values.map((v) => {
+    if (v === null)
+      return null;
+    const t = tokenize(v);
+    if (t.length !== modalLen)
+      return null;
+    return t.filter((_, j) => volatile[j]);
+  });
+  return {
+    stability: sigTotal === 0 ? 1 : sigConstant / sigTotal,
+    template: parts.join(""),
+    tokens: parts,
+    slots,
+    slotValues,
+    matching: sameLen.length
+  };
+}
+
 // packages/core/dist/cluster.js
 function percentile(sortedAsc, p) {
   if (sortedAsc.length === 0)
@@ -3575,21 +3807,45 @@ function volatileSlots(runs) {
   for (let i = 0; i < len; i++) {
     if (runs[0].nodes[i].kind !== "tool_use" && runs[0].nodes[i].kind !== "model_turn")
       continue;
-    const values = /* @__PURE__ */ new Set();
-    const examples = [];
-    for (const r of runs) {
-      const raw = r.nodes[i]?.raw ?? "";
-      if (!values.has(raw)) {
-        values.add(raw);
-        if (examples.length < 3)
-          examples.push(raw.slice(0, 120));
+    const values = runs.map((r) => r.nodes[i] ? normalizeWs(r.nodes[i].raw) : null);
+    const t = columnTemplate(values);
+    if (t && t.slots > 0) {
+      const tuples = /* @__PURE__ */ new Set();
+      const examples2 = [];
+      for (const sv of t.slotValues) {
+        if (!sv)
+          continue;
+        const tuple = sv.join(" \xB7 ");
+        if (!tuples.has(tuple)) {
+          tuples.add(tuple);
+          if (examples2.length < 3)
+            examples2.push(tuple.slice(0, 120));
+        }
       }
+      if (tuples.size > 1) {
+        slots.push({
+          nodeIndex: i,
+          label: runs[0].nodes[i].label.slice(0, 120),
+          distinctValues: tuples.size,
+          examples: examples2
+        });
+      }
+      continue;
     }
-    if (values.size > 1) {
+    const distinct = /* @__PURE__ */ new Set();
+    const examples = [];
+    for (const v of values) {
+      if (v === null || distinct.has(v))
+        continue;
+      distinct.add(v);
+      if (examples.length < 3)
+        examples.push(v.slice(0, 120));
+    }
+    if (distinct.size > 1) {
       slots.push({
         nodeIndex: i,
         label: runs[0].nodes[i].label.slice(0, 120),
-        distinctValues: values.size,
+        distinctValues: distinct.size,
         examples
       });
     }
@@ -3625,7 +3881,10 @@ function computeMetrics(runs, modalPathFraction) {
     costP95Usd: percentile(costs, 95),
     firstSeen: dates[0],
     lastSeen: dates[dates.length - 1],
-    determinismScore: Math.max(0, Math.min(1, modalPathFraction * outputConsistency(runs))),
+    // Procedure stability only. Task-mix concentration is pathShare — mixing
+    // the two punished agents that legitimately run several procedures.
+    determinismScore: Math.max(0, Math.min(1, outputConsistency(runs))),
+    pathShare: Math.max(0, Math.min(1, modalPathFraction)),
     failureRate: runs.length === 0 ? 0 : failures / runs.length,
     retrySubchains: retries,
     modelMix,
@@ -3955,78 +4214,6 @@ function mapFindings(clusters, options) {
 
 // packages/core/dist/segments.js
 var import_node_crypto3 = require("node:crypto");
-
-// packages/core/dist/taxonomy.js
-var MECHANICAL_TOOLS = /* @__PURE__ */ new Set([
-  "read",
-  "glob",
-  "grep",
-  "ls",
-  "notebookread",
-  "toolsearch",
-  "tasklist",
-  "taskget"
-]);
-var CACHEABLE_TOOLS = /* @__PURE__ */ new Set(["webfetch", "web_fetch", "websearch", "web_search"]);
-var SIDE_EFFECT_TOOLS = /* @__PURE__ */ new Set([
-  "write",
-  "edit",
-  "multiedit",
-  "notebookedit",
-  "taskcreate",
-  "taskupdate",
-  "sendmessage"
-]);
-var GENERATIVE_TOOLS = /* @__PURE__ */ new Set(["task", "agent", "workflow", "skill", "advisor"]);
-var RO_BASH = /^\s*(ls|cat|head|tail|wc|grep|rg|find|pwd|which|whoami|echo|printf|stat|du|df|ps|env|printenv|jq|yq|sort|uniq|cut|awk|sed -n|tr|diff|cmp|file|basename|dirname|realpath|readlink|md5|shasum|sha256sum|git (status|log|diff|show|branch|remote|rev-parse|describe|blame|ls-files)|npm (ls|view|outdated)|node --version|python3? --version|curl (-s+ )?-?-head|type)\b/i;
-var FETCH_BASH = /^\s*(curl|wget|http)\b(?![^|]*(-X\s*(POST|PUT|DELETE|PATCH)|--data|-d\s))/i;
-function classifyBashCommand(command) {
-  const stages = command.split(/\||&&|;/).map((s) => s.trim()).filter(Boolean);
-  let cls = "mechanical";
-  for (const stage of stages) {
-    if (RO_BASH.test(stage))
-      continue;
-    if (FETCH_BASH.test(stage)) {
-      if (cls === "mechanical")
-        cls = "cacheable";
-      continue;
-    }
-    return "side_effect";
-  }
-  return cls;
-}
-function classifyStep(step) {
-  if (step.kind === "model_turn" || step.kind === "thinking")
-    return "generative";
-  if (step.kind === "tool_result")
-    return classifyStep({ ...step, kind: "tool_use" });
-  const name = step.name.toLowerCase();
-  if (MECHANICAL_TOOLS.has(name))
-    return "mechanical";
-  if (CACHEABLE_TOOLS.has(name))
-    return "cacheable";
-  if (SIDE_EFFECT_TOOLS.has(name))
-    return "side_effect";
-  if (GENERATIVE_TOOLS.has(name))
-    return "generative";
-  if (name === "bash" || name === "shell") {
-    try {
-      const input = JSON.parse(step.payload);
-      if (typeof input.command === "string")
-        return classifyBashCommand(input.command);
-    } catch {
-    }
-    return "side_effect";
-  }
-  return "side_effect";
-}
-function classifyNode(node) {
-  const name = node.label.startsWith("tool:") ? node.label.slice(5).split(" ")[0] : node.label.startsWith("result:") ? node.label.slice(7).split(" ")[0] : node.label.split(":")[0];
-  const kind = node.label.startsWith("tool:") ? "tool_use" : node.label.startsWith("result:") ? "tool_result" : node.label === "thinking" ? "thinking" : "model_turn";
-  return classifyStep({ kind, name, payload: node.raw });
-}
-
-// packages/core/dist/segments.js
 var MIN_LEN = 3;
 var MAX_LEN = 12;
 var MAX_SEGMENTS = 12;
@@ -4063,7 +4250,7 @@ function mineSegments(graphs, maxSegments = MAX_SEGMENTS) {
   }
   const minSupport = Math.max(2, Math.ceil(graphs.length * 0.3));
   let candidates = [...byKey.values()].filter((a) => a.runs.size >= minSupport);
-  const key = (labels) => labels.join("\u241E");
+  const key = (labels) => `\u241E${labels.join("\u241E")}\u241E`;
   const byJoined = new Map(candidates.map((c) => [key(c.labels), c]));
   candidates = candidates.filter((c) => {
     for (const other of byJoined.values()) {
@@ -4084,8 +4271,25 @@ function mineSegments(graphs, maxSegments = MAX_SEGMENTS) {
       hashCounts.set(o.valueHash, (hashCounts.get(o.valueHash) ?? 0) + 1);
     const modal = Math.max(...hashCounts.values());
     const rep = c.occurrences[0];
-    const repNodes = graphById.get(rep.runId).nodes.slice(rep.startIndex, rep.startIndex + c.labels.length);
+    const repGraph = graphById.get(rep.runId);
+    const repNodes = repGraph.nodes.slice(rep.startIndex, rep.startIndex + c.labels.length);
     const classes = repNodes.map((n) => classifyNode(n));
+    const lo = rep.startIndex, hi = rep.startIndex + c.labels.length;
+    let boundaryInputs = 0, boundaryOutputs = 0, internalDataflow = 0;
+    for (const e of repGraph.edges) {
+      if (e.type !== "dataflow")
+        continue;
+      const fromIn = e.from >= lo && e.from < hi;
+      const toIn = e.to >= lo && e.to < hi;
+      if (fromIn && toIn)
+        internalDataflow++;
+      else if (!fromIn && toIn)
+        boundaryInputs++;
+      else if (fromIn && !toIn)
+        boundaryOutputs++;
+    }
+    const crossings = boundaryInputs + boundaryOutputs;
+    const separability = crossings <= 2 ? "clean" : crossings <= 5 ? "moderate" : "entangled";
     const nonGenerative = classes.filter((cl) => cl === "mechanical" || cl === "cacheable").length;
     const seen = /* @__PURE__ */ new Set();
     const examples = c.occurrences.filter((o) => seen.has(o.runId) ? false : (seen.add(o.runId), true)).slice(0, 5).map((o) => ({ runId: o.runId, startIndex: o.startIndex }));
@@ -4101,7 +4305,11 @@ function mineSegments(graphs, maxSegments = MAX_SEGMENTS) {
       determinism: Math.round(modal / c.occurrences.length * 100) / 100,
       mechanicalRatio: Math.round(nonGenerative / classes.length * 100) / 100,
       classes,
-      examples
+      examples,
+      boundaryInputs,
+      boundaryOutputs,
+      internalDataflow,
+      separability
     };
   });
   return segments.sort((a, b) => b.totalCostUsd * b.support - a.totalCostUsd * a.support).slice(0, maxSegments);
@@ -4220,7 +4428,7 @@ function findingCard(f, rank) {
   </section>`;
 }
 function renderReportHtml(report, opts = {}) {
-  const title = opts.title ?? "ccopt \u2014 Agent Waste Report";
+  const title = opts.title ?? "Effigent \u2014 Agent Waste Report";
   const t = report.totals;
   const topClusters = report.clusters.filter((c) => c.nRuns >= 2).slice(0, 12);
   return `<!doctype html>
@@ -4299,21 +4507,61 @@ function renderReportHtml(report, opts = {}) {
 </html>`;
 }
 
+// packages/core/dist/embed.js
+var EMBED_SEQ_DIM = 128;
+var EMBED_FLOW_DIM = 128;
+var EMBED_DIM = EMBED_SEQ_DIM + EMBED_FLOW_DIM;
+var SEQ_WEIGHT = Math.sqrt(0.7);
+var FLOW_WEIGHT = Math.sqrt(0.3);
+
+// packages/core/dist/redact.js
+var RULES = [
+  // PEM / private key blocks first (multiline, would otherwise partially match)
+  { name: "PRIVATE_KEY", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
+  // provider + platform keys
+  { name: "API_KEY", re: /\b(?:sk|rk)-[A-Za-z0-9_-]{16,}\b/g },
+  // OpenAI/Anthropic/Stripe-style
+  { name: "API_KEY", re: /\b(?:eff|cck)_[a-f0-9]{16,}\b/g },
+  // our own capture keys
+  { name: "API_KEY", re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g },
+  // GitHub
+  { name: "API_KEY", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  // Slack
+  { name: "API_KEY", re: /\bAIza[A-Za-z0-9_-]{30,}\b/g },
+  // Google
+  { name: "AWS_KEY", re: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g },
+  { name: "JWT", re: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g },
+  { name: "BEARER", re: /\b[Bb]earer\s+[A-Za-z0-9._~+/-]{16,}=*/g },
+  // connection strings with inline credentials
+  { name: "DB_URL", re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s:@/]+:[^\s@/]+@[^\s"']+/g },
+  // PII
+  { name: "PHONE", re: /(?<![\w.])\+\d{1,3}[-. ]?\(?\d{1,4}\)?[-. ]?\d{2,4}[-. ]?\d{3,7}\b/g },
+  // E.164 / intl
+  { name: "PHONE", re: /\(\d{3}\)\s?\d{3}[-.]\d{4}\b/g },
+  { name: "PHONE", re: /\b\d{3}[-.]\d{3}[-.]\d{4}\b/g },
+  { name: "SSN", re: /\b\d{3}-\d{2}-\d{4}\b/g },
+  // key=value credentials — password: x, token=y, api_key: z (values die, keys stay)
+  { name: "CREDENTIAL", re: /\b(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)["']?\s*[:=]\s*["']?[^\s"',;]{4,}/gi },
+  { name: "EMAIL", re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
+  { name: "CARD", re: /\b(?:\d[ -]?){13,16}\b/g }
+];
+var BUILTIN_REDACTION_TYPES = [...new Set(RULES.map((r) => r.name))];
+
 // packages/cli/src/store.ts
 var import_node_fs = require("node:fs");
 var import_node_os = require("node:os");
 var import_node_path = require("node:path");
-var CCOPT_HOME = (0, import_node_path.join)((0, import_node_os.homedir)(), ".ccopt");
-var AGENT_MAP_PATH = (0, import_node_path.join)(CCOPT_HOME, "agent-map.json");
-var CCOPT_STORE = (0, import_node_path.join)(CCOPT_HOME, "store");
+var EFFIGENT_HOME = (0, import_node_path.join)((0, import_node_os.homedir)(), ".effigent");
+var AGENT_MAP_PATH = (0, import_node_path.join)(EFFIGENT_HOME, "agent-map.json");
+var EFFIGENT_STORE = (0, import_node_path.join)(EFFIGENT_HOME, "store");
 function defaultSource() {
   return (0, import_node_path.join)((0, import_node_os.homedir)(), ".claude", "projects");
 }
 function defaultSources() {
-  return [defaultSource(), CCOPT_STORE];
+  return [defaultSource(), EFFIGENT_STORE];
 }
-var AGENT_TAGS_DIR = (0, import_node_path.join)(CCOPT_HOME, "agent-map.d");
-var CONFIG_PATH = (0, import_node_path.join)(CCOPT_HOME, "config.json");
+var AGENT_TAGS_DIR = (0, import_node_path.join)(EFFIGENT_HOME, "agent-map.d");
+var CONFIG_PATH = (0, import_node_path.join)(EFFIGENT_HOME, "config.json");
 function loadConfig() {
   try {
     const parsed = JSON.parse((0, import_node_fs.readFileSync)(CONFIG_PATH, "utf8"));
@@ -4323,7 +4571,7 @@ function loadConfig() {
   }
 }
 function saveConfig(config) {
-  (0, import_node_fs.mkdirSync)(CCOPT_HOME, { recursive: true });
+  (0, import_node_fs.mkdirSync)(EFFIGENT_HOME, { recursive: true });
   (0, import_node_fs.writeFileSync)(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 function agentFromRules(cwd, rules) {
@@ -4432,19 +4680,49 @@ function loadRuns(sourceDirs, options = {}) {
 // packages/cli/src/upload.ts
 var import_node_fs2 = require("node:fs");
 var import_node_zlib = require("node:zlib");
+var MAX_BODY_BYTES = 35e5;
+function shrinkToFit(run) {
+  let truncated = false;
+  for (const cap of [4e3, 2e3, 1e3, 500]) {
+    const shrunk = { ...run, steps: run.steps.map((s) => ({ ...s, payload: s.payload.slice(0, cap) })) };
+    const json = JSON.stringify(shrunk);
+    if (Buffer.byteLength(json) <= MAX_BODY_BYTES) return { json, truncated };
+    truncated = true;
+  }
+  const head = run.steps.slice(0, 800).map((s) => ({ ...s, payload: s.payload.slice(0, 500) }));
+  const tail = run.steps.slice(-800).map((s) => ({ ...s, payload: s.payload.slice(0, 500) }));
+  const sampled = { ...run, steps: [...head, ...tail] };
+  return { json: JSON.stringify(sampled), truncated: true };
+}
 async function uploadSessionFile(target, filePath, sessionId, agentId) {
-  const body = (0, import_node_zlib.gzipSync)((0, import_node_fs2.readFileSync)(filePath));
+  const raw = (0, import_node_fs2.readFileSync)(filePath);
+  const gz = (0, import_node_zlib.gzipSync)(raw);
+  const base = target.server.replace(/\/$/, "");
+  const authHeaders = {
+    authorization: `Bearer ${target.apiKey}`,
+    "x-effigent-session-id": sessionId,
+    ...agentId ? { "x-effigent-agent-id": agentId } : {}
+  };
   try {
-    const res = await fetch(`${target.server.replace(/\/$/, "")}/api/v1/ingest`, {
+    if (gz.length > MAX_BODY_BYTES) {
+      const run = parseTranscript(raw.toString("utf8"), { agentId });
+      if (!run) return { ok: false, status: 0, detail: "transcript too large and not parseable locally" };
+      const { json, truncated } = shrinkToFit(run);
+      const res2 = await fetch(`${base}/api/v1/ingest`, {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json", "x-effigent-format": "run" },
+        body: json
+      });
+      return {
+        ok: res2.ok,
+        status: res2.status,
+        detail: res2.ok ? truncated ? "large session \u2014 step payloads trimmed locally" : void 0 : await res2.text()
+      };
+    }
+    const res = await fetch(`${base}/api/v1/ingest`, {
       method: "POST",
-      headers: {
-        authorization: `Bearer ${target.apiKey}`,
-        "content-type": "application/octet-stream",
-        "content-encoding": "gzip",
-        "x-ccopt-session-id": sessionId,
-        ...agentId ? { "x-ccopt-agent-id": agentId } : {}
-      },
-      body
+      headers: { ...authHeaders, "content-type": "application/octet-stream", "content-encoding": "gzip" },
+      body: gz
     });
     return { ok: res.ok, status: res.status, detail: res.ok ? void 0 : await res.text() };
   } catch (err) {
@@ -4454,8 +4732,8 @@ async function uploadSessionFile(target, filePath, sessionId, agentId) {
 
 // packages/cli/src/index.ts
 var program2 = new Command();
-program2.name("ccopt").description("ccopt \u2014 graph-based agent waste detection").version("0.1.0");
-program2.command("analyze").description("Analyze local Claude Code transcripts and render the Waste Report").option("--source <dir...>", "transcript directories", defaultSources()).option("--days <n>", "analysis window in days", "30").option("--agent <substr>", "only include agents whose id contains this substring").option("--min-steps <n>", "ignore trivial sessions with fewer steps", "3").option("--out <file>", "HTML report output path", "ccopt-report.html").option("--json <file>", "JSON report output path", "ccopt-report.json").action((opts) => {
+program2.name("effigent").description("Effigent \u2014 the Optimizer CLI: capture agent runs, compile away the waste").version("0.5.0");
+program2.command("analyze").description("Analyze local Claude Code transcripts and render the Waste Report").option("--source <dir...>", "transcript directories", defaultSources()).option("--days <n>", "analysis window in days", "30").option("--agent <substr>", "only include agents whose id contains this substring").option("--min-steps <n>", "ignore trivial sessions with fewer steps", "3").option("--out <file>", "HTML report output path", "effigent-report.html").option("--json <file>", "JSON report output path", "effigent-report.json").action((opts) => {
   const sources = Array.isArray(opts.source) ? opts.source : [opts.source];
   const runs = loadRuns(sources.map((s) => (0, import_node_path2.resolve)(s)), {
     sinceDays: Number(opts.days),
@@ -4480,7 +4758,7 @@ program2.command("analyze").description("Analyze local Claude Code transcripts a
   }
   console.log(`Report: ${(0, import_node_path2.resolve)(opts.out)}`);
 });
-program2.command("login").description("Persist the ccopt server + API key (used as defaults by sync/run/doctor)").requiredOption("--server <url>", "ccopt server base URL").requiredOption("--key <apiKey>", "tenant API key").action(async (opts) => {
+program2.command("login").description("Persist the effigent server + API key (used as defaults by sync/run/doctor)").requiredOption("--server <url>", "effigent server base URL").requiredOption("--key <apiKey>", "tenant API key").action(async (opts) => {
   const config = loadConfig();
   config.server = opts.server;
   config.apiKey = opts.key;
@@ -4499,7 +4777,7 @@ program2.command("login").description("Persist the ccopt server + API key (used 
 program2.command("invite").description("Print a one-line setup command for another developer (uses your login + rules)").option("--agent <substr>", "restrict their scheduled sync to this agent substring").action((opts) => {
   const config = loadConfig();
   if (!config.server || !config.apiKey) {
-    console.error("Run `ccopt login` first \u2014 invite packages your server + key.");
+    console.error("Run `effigent login` first \u2014 invite packages your server + key.");
     process.exitCode = 2;
     return;
   }
@@ -4513,18 +4791,18 @@ program2.command("invite").description("Print a one-line setup command for anoth
   const encoded = Buffer.from(JSON.stringify(token)).toString("base64url");
   console.log("Send this ONE command to the developer (contains the workspace API key \u2014 share privately):\n");
   console.log(
-    `  curl -fsSL https://raw.githubusercontent.com/SpectorHacked/ccopt/main/install.sh | sh -s -- --join ${encoded}
+    `  curl -fsSL https://effigent.ai/install.sh | sh -s -- --join ${encoded}
 `
   );
-  console.log("It installs ccopt, joins this workspace, schedules a 15-minute sync, and uploads their history.");
+  console.log("It installs effigent, joins this workspace, schedules a 15-minute sync, and uploads their history.");
 });
-program2.command("join").description("Join a workspace from an invite token: config + schedule + first sync, in one shot").argument("<token>", "setup token from `ccopt invite`").action(async (rawToken) => {
+program2.command("join").description("Join a workspace from an invite token: config + schedule + first sync, in one shot").argument("<token>", "setup token from `effigent invite`").action(async (rawToken) => {
   let token;
   try {
     token = JSON.parse(Buffer.from(rawToken, "base64url").toString("utf8"));
     if (token.v !== 1 || !token.server || !token.apiKey) throw new Error("missing fields");
   } catch {
-    console.error("Invalid setup token. Ask for a fresh one via `ccopt invite`.");
+    console.error("Invalid setup token. Ask for a fresh one via `effigent invite`.");
     process.exitCode = 2;
     return;
   }
@@ -4544,42 +4822,42 @@ program2.command("join").description("Join a workspace from an invite token: con
     console.log(`! server not reachable right now (${err instanceof Error ? err.message : err}) \u2014 sync will retry on schedule`);
   }
   const nodeBin = process.execPath;
-  const ccoptBin = (0, import_node_path2.resolve)(process.argv[1]);
+  const cliBin = (0, import_node_path2.resolve)(process.argv[1]);
   const syncArgs = ["sync", ...token.syncAgent ? ["--agent", token.syncAgent] : [], "--days", "7"];
   if (process.platform === "darwin") {
-    const plistPath = (0, import_node_path2.join)((0, import_node_os2.homedir)(), "Library", "LaunchAgents", "com.ccopt.sync.plist");
-    const args = [nodeBin, ccoptBin, ...syncArgs];
+    const plistPath = (0, import_node_path2.join)((0, import_node_os2.homedir)(), "Library", "LaunchAgents", "com.effigent.sync.plist");
+    const args = [nodeBin, cliBin, ...syncArgs];
     const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.ccopt.sync</string>
+  <key>Label</key><string>com.effigent.sync</string>
   <key>ProgramArguments</key>
   <array>
 ${args.map((a) => `    <string>${a}</string>`).join("\n")}
   </array>
   <key>StartInterval</key><integer>900</integer>
   <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>${(0, import_node_path2.join)(CCOPT_HOME, "sync.log")}</string>
-  <key>StandardErrorPath</key><string>${(0, import_node_path2.join)(CCOPT_HOME, "sync.log")}</string>
+  <key>StandardOutPath</key><string>${(0, import_node_path2.join)(EFFIGENT_HOME, "sync.log")}</string>
+  <key>StandardErrorPath</key><string>${(0, import_node_path2.join)(EFFIGENT_HOME, "sync.log")}</string>
 </dict>
 </plist>
 `;
     (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(plistPath), { recursive: true });
-    (0, import_node_fs3.mkdirSync)(CCOPT_HOME, { recursive: true });
+    (0, import_node_fs3.mkdirSync)(EFFIGENT_HOME, { recursive: true });
     (0, import_node_fs3.writeFileSync)(plistPath, plist);
     const uid = process.getuid?.() ?? 501;
-    (0, import_node_child_process.spawnSync)("launchctl", ["bootout", `gui/${uid}/com.ccopt.sync`], { stdio: "ignore" });
+    (0, import_node_child_process.spawnSync)("launchctl", ["bootout", `gui/${uid}/com.effigent.sync`], { stdio: "ignore" });
     const boot = (0, import_node_child_process.spawnSync)("launchctl", ["bootstrap", `gui/${uid}`, plistPath], { encoding: "utf8" });
     console.log(
-      boot.status === 0 ? "\u2713 scheduled: launchd job com.ccopt.sync (every 15 min)" : `! could not load launchd job (${boot.stderr?.trim()}) \u2014 plist written to ${plistPath}`
+      boot.status === 0 ? "\u2713 scheduled: launchd job com.effigent.sync (every 15 min)" : `! could not load launchd job (${boot.stderr?.trim()}) \u2014 plist written to ${plistPath}`
     );
   } else {
-    const cronLine = `*/15 * * * * ${nodeBin} ${ccoptBin} ${syncArgs.join(" ")} >> ${(0, import_node_path2.join)(CCOPT_HOME, "sync.log")} 2>&1`;
+    const cronLine = `*/15 * * * * ${nodeBin} ${cliBin} ${syncArgs.join(" ")} >> ${(0, import_node_path2.join)(EFFIGENT_HOME, "sync.log")} 2>&1`;
     const current = (0, import_node_child_process.spawnSync)("crontab", ["-l"], { encoding: "utf8" });
     const existing = current.status === 0 ? current.stdout : "";
-    if (existing.includes("ccopt") && existing.includes("sync")) {
-      console.log("\u2713 scheduled: crontab already has a ccopt sync entry");
+    if (existing.includes("effigent") && existing.includes("sync")) {
+      console.log("\u2713 scheduled: crontab already has a effigent sync entry");
     } else {
       const set = (0, import_node_child_process.spawnSync)("crontab", ["-"], { input: `${existing.trimEnd()}
 ${cronLine}
@@ -4591,20 +4869,20 @@ ${cronLine}
     }
   }
   console.log("Uploading existing history\u2026");
-  const first = (0, import_node_child_process.spawnSync)(nodeBin, [ccoptBin, ...syncArgs, "--days", "30"], { stdio: "inherit" });
+  const first = (0, import_node_child_process.spawnSync)(nodeBin, [cliBin, ...syncArgs, "--days", "30"], { stdio: "inherit" });
   console.log(
     first.status === 0 ? "\nDone. This machine now reports to the workspace continuously." : "\nSetup saved; first sync failed (see above) \u2014 the schedule will retry every 15 minutes."
   );
 });
-program2.command("sync").description("Upload local session transcripts to the ccopt service").option("--server <url>", "ccopt server base URL (default: ccopt login config)").option("--key <apiKey>", "tenant API key (default: ccopt login config)").option("--source <dir...>", "transcript directories", defaultSources()).option("--days <n>", "only sync sessions modified in the last N days", "30").option("--agent <substr>", "only sync sessions whose resolved agentId contains this substring").option(
+program2.command("sync").description("Upload local session transcripts to the effigent service").option("--server <url>", "effigent server base URL (default: effigent login config)").option("--key <apiKey>", "tenant API key (default: effigent login config)").option("--source <dir...>", "transcript directories", defaultSources()).option("--days <n>", "only sync sessions modified in the last N days", "30").option("--agent <substr>", "only sync sessions whose resolved agentId contains this substring").option(
   "--all",
   "DANGER: also upload unattributed sessions (everything on this machine). Default is attributed-only: a session uploads only when a tag or agentRule claims it."
 ).action(async (opts) => {
   const config = loadConfig();
-  const server = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
-  const apiKey = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+  const server = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+  const apiKey = opts.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
   if (!server || !apiKey) {
-    console.error("No server/key: pass --server/--key, set CCOPT_SERVER/CCOPT_API_KEY, or run `ccopt login`.");
+    console.error("No server/key: pass --server/--key, set EFFIGENT_SERVER/EFFIGENT_API_KEY, or run `effigent login`.");
     process.exitCode = 2;
     return;
   }
@@ -4614,12 +4892,12 @@ program2.command("sync").description("Upload local session transcripts to the cc
   const sessions = sourceDirs.flatMap((d) => discoverSessions((0, import_node_path2.resolve)(d))).filter((s) => s.mtimeMs >= cutoff).filter((s) => seen.has(s.sessionId) ? false : (seen.add(s.sessionId), true)).map((s) => ({ ...s, agentId: resolveAgentId(s.sessionId, s.path) })).filter((s) => opts.all ? true : s.agentId !== void 0).filter((s) => !opts.agent || (s.agentId ?? "").includes(opts.agent));
   if (sessions.length === 0) {
     console.error(
-      "Nothing to sync. (Only attributed sessions upload \u2014 add an agentRule, use `ccopt tag`/`ccopt run`, or pass --all.)"
+      "Nothing to sync. (Only attributed sessions upload \u2014 add an agentRule, use `effigent tag`/`effigent run`, or pass --all.)"
     );
     return;
   }
   const target = (0, import_node_crypto4.createHash)("sha256").update(`${server}|${apiKey}`).digest("hex").slice(0, 12);
-  const statePath = `${CCOPT_HOME}/sync-state-${target}.json`;
+  const statePath = `${EFFIGENT_HOME}/sync-state-${target}.json`;
   let state = {};
   try {
     state = JSON.parse((0, import_node_fs3.readFileSync)(statePath, "utf8"));
@@ -4645,11 +4923,11 @@ program2.command("sync").description("Upload local session transcripts to the cc
     state[s.sessionId] = s.mtimeMs;
     uploaded++;
   }
-  (0, import_node_fs3.mkdirSync)(CCOPT_HOME, { recursive: true });
+  (0, import_node_fs3.mkdirSync)(EFFIGENT_HOME, { recursive: true });
   (0, import_node_fs3.writeFileSync)(statePath, JSON.stringify(state, null, 2));
   console.log(`Synced ${uploaded} session(s), ${skipped} already up to date.`);
 });
-program2.command("doctor").description("Check that ccopt can capture, attribute, and (optionally) upload on this machine").option("--server <url>", "ccopt server to check (env CCOPT_SERVER)").option("--key <apiKey>", "tenant API key to verify (env CCOPT_API_KEY)").action(async (opts) => {
+program2.command("doctor").description("Check that effigent can capture, attribute, and (optionally) upload on this machine").option("--server <url>", "effigent server to check (env EFFIGENT_SERVER)").option("--key <apiKey>", "tenant API key to verify (env EFFIGENT_API_KEY)").action(async (opts) => {
   let failures = 0;
   const ok = (msg) => console.log(`  \u2713 ${msg}`);
   const warn = (msg) => console.log(`  ! ${msg}`);
@@ -4657,7 +4935,7 @@ program2.command("doctor").description("Check that ccopt can capture, attribute,
     console.log(`  \u2717 ${msg}`);
     failures++;
   };
-  console.log("ccopt doctor\n");
+  console.log("effigent doctor\n");
   const major = Number(process.versions.node.split(".")[0]);
   major >= 20 ? ok(`node ${process.versions.node}`) : bad(`node ${process.versions.node} \u2014 need \u2265 20`);
   const claudeBin = (0, import_node_child_process.spawnSync)("claude", ["--version"], { encoding: "utf8" });
@@ -4674,17 +4952,17 @@ program2.command("doctor").description("Check that ccopt can capture, attribute,
   const runs = loadRuns(defaultSources(), { sinceDays: 30, minSteps: 1 });
   runs.length > 0 ? ok(`${runs.length} run(s) parse cleanly (${[...new Set(runs.map((r) => r.agentId))].length} agent id(s))`) : warn("no parseable runs in the last 30 days \u2014 run any Claude Code/Agent SDK agent first");
   const tags = Object.keys(loadAgentMap()).length;
-  tags > 0 ? ok(`${tags} session(s) explicitly attributed via ccopt run/tag`) : warn("no explicit attributions yet \u2014 untagged runs fall back to their directory name");
+  tags > 0 ? ok(`${tags} session(s) explicitly attributed via effigent run/tag`) : warn("no explicit attributions yet \u2014 untagged runs fall back to their directory name");
   if (process.env.ANTHROPIC_API_KEY) ok("env auth: ANTHROPIC_API_KEY set (--isolated will work)");
   else if (process.env.CLAUDE_CODE_USE_BEDROCK || process.env.CLAUDE_CODE_USE_VERTEX)
     ok("env auth: Bedrock/Vertex configured (--isolated will work)");
   else
     warn(
-      "no env-based auth detected \u2014 `ccopt run --isolated` needs ANTHROPIC_API_KEY (or Bedrock/Vertex); non-isolated capture works regardless"
+      "no env-based auth detected \u2014 `effigent run --isolated` needs ANTHROPIC_API_KEY (or Bedrock/Vertex); non-isolated capture works regardless"
     );
   const config = loadConfig();
-  const server = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
-  const apiKey = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+  const server = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+  const apiKey = opts.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
   if (server) {
     try {
       const health = await fetch(`${server.replace(/\/$/, "")}/healthz`);
@@ -4695,13 +4973,13 @@ program2.command("doctor").description("Check that ccopt can capture, attribute,
         });
         auth.ok ? ok("API key accepted") : bad(`API key rejected: HTTP ${auth.status}`);
       } else {
-        warn("no API key provided \u2014 skipping auth check (set CCOPT_API_KEY)");
+        warn("no API key provided \u2014 skipping auth check (set EFFIGENT_API_KEY)");
       }
     } catch (err) {
       bad(`cannot reach ${server}: ${err instanceof Error ? err.message : err}`);
     }
   } else {
-    warn("no server configured \u2014 local-only mode (set CCOPT_SERVER to check upload path)");
+    warn("no server configured \u2014 local-only mode (set EFFIGENT_SERVER to check upload path)");
   }
   console.log(failures === 0 ? "\nAll checks passed." : `
 ${failures} check(s) failed.`);
@@ -4716,13 +4994,13 @@ program2.command("run").description(
 ).requiredOption("--agent <id>", "logical agent id for this run").option("--source <dir>", "transcript directory to watch (non-isolated mode)", defaultSource()).option(
   "--isolated",
   "run with a private CLAUDE_CONFIG_DIR: exact attribution, safe for concurrent agents. Requires env-based auth (ANTHROPIC_API_KEY / Bedrock / Vertex) or file-based credentials; macOS keychain logins do not carry over."
-).option("--server <url>", "ccopt server to upload captured sessions to (env CCOPT_SERVER)").option("--key <apiKey>", "tenant API key for --server (env CCOPT_API_KEY)").allowUnknownOption(true).argument("<cmd...>", 'command to execute, e.g. -- claude -p "\u2026" or -- node my-agent.js').action(async (cmd, opts) => {
+).option("--server <url>", "effigent server to upload captured sessions to (env EFFIGENT_SERVER)").option("--key <apiKey>", "tenant API key for --server (env EFFIGENT_API_KEY)").allowUnknownOption(true).argument("<cmd...>", 'command to execute, e.g. -- claude -p "\u2026" or -- node my-agent.js').action(async (cmd, opts) => {
   const argv = [...cmd];
   const config = loadConfig();
-  const server = opts.server ?? process.env.CCOPT_SERVER ?? config.server;
-  const apiKey = opts.key ?? process.env.CCOPT_API_KEY ?? config.apiKey;
+  const server = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+  const apiKey = opts.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
   if (server && !apiKey) {
-    console.error("[ccopt] --server requires --key (or CCOPT_API_KEY)");
+    console.error("[effigent] --server requires --key (or EFFIGENT_API_KEY)");
     process.exitCode = 2;
     return;
   }
@@ -4736,7 +5014,7 @@ program2.command("run").description(
   let watchDir;
   let isoDir;
   if (opts.isolated) {
-    isoDir = (0, import_node_fs3.mkdtempSync)((0, import_node_path2.join)((0, import_node_os2.tmpdir)(), "ccopt-run-"));
+    isoDir = (0, import_node_fs3.mkdtempSync)((0, import_node_path2.join)((0, import_node_os2.tmpdir)(), "effigent-run-"));
     env.CLAUDE_CONFIG_DIR = isoDir;
     for (const f of [".credentials.json"]) {
       const src = (0, import_node_path2.join)((0, import_node_os2.homedir)(), ".claude", f);
@@ -4749,7 +5027,7 @@ program2.command("run").description(
     watchDir = (0, import_node_path2.resolve)(opts.source);
   }
   const before = new Map(discoverSessions(watchDir).map((s) => [s.path, s.mtimeMs]));
-  console.error(`[ccopt] agent=${opts.agent}${opts.isolated ? " isolated" : ""} watching=${watchDir}`);
+  console.error(`[effigent] agent=${opts.agent}${opts.isolated ? " isolated" : ""} watching=${watchDir}`);
   const res = (0, import_node_child_process.spawnSync)(argv[0], argv.slice(1), { stdio: "inherit", env });
   const produced = discoverSessions(watchDir).filter((s) => {
     const prev = before.get(s.path);
@@ -4762,23 +5040,674 @@ program2.command("run").description(
     for (const s of produced) {
       const r = await uploadSessionFile({ server, apiKey }, s.path, s.sessionId, opts.agent);
       if (r.ok) ok++;
-      else console.error(`[ccopt] upload failed for ${s.sessionId}: HTTP ${r.status} ${r.detail ?? ""}`);
+      else console.error(`[effigent] upload failed for ${s.sessionId}: HTTP ${r.status} ${r.detail ?? ""}`);
     }
-    console.error(`[ccopt] uploaded ${ok}/${produced.length} session(s) as ${opts.agent}`);
+    console.error(`[effigent] uploaded ${ok}/${produced.length} session(s) as ${opts.agent}`);
   }
   if (isoDir) {
     for (const s of produced) {
       const rel = s.path.slice(watchDir.length + 1);
-      const dest = (0, import_node_path2.join)(CCOPT_STORE, rel);
+      const dest = (0, import_node_path2.join)(EFFIGENT_STORE, rel);
       (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(dest), { recursive: true });
       (0, import_node_fs3.copyFileSync)(s.path, dest);
     }
     (0, import_node_fs3.rmSync)(isoDir, { recursive: true, force: true });
   }
   console.error(
-    sessionIds.length > 0 ? `[ccopt] attributed ${sessionIds.length} session(s) to ${opts.agent}` : "[ccopt] no sessions observed during the run"
+    sessionIds.length > 0 ? `[effigent] attributed ${sessionIds.length} session(s) to ${opts.agent}` : "[effigent] no sessions observed during the run"
   );
   process.exitCode = res.status ?? 1;
+});
+var agentCmd = program2.command("agent").description("Register agents and mint scoped capture keys");
+agentCmd.command("add <name>").description("Register an agent in your workspace and save its scoped capture key").option("--harness <name>", "harness label (e.g. claude-code, codex, hermes, langgraph)").option("--server <url>", "effigent server base URL (default: effigent login config)").option("--key <apiKey>", "tenant OWNER key (default: effigent login config)").action(async (name, opts) => {
+  const config = loadConfig();
+  const server = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+  const apiKey = opts.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
+  if (!server || !apiKey) {
+    console.error("No server/key: run `effigent login` first (owner key), or pass --server/--key.");
+    process.exitCode = 2;
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(`${server.replace(/\/$/, "")}/api/v1/agents`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ name, harness: opts.harness })
+    });
+  } catch (err) {
+    console.error(`Cannot reach ${server}: ${err instanceof Error ? err.message : err}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!res.ok) {
+    console.error(`Agent registration failed (HTTP ${res.status}): ${await res.text()}`);
+    if (res.status === 403) console.error("Use your tenant key (from `effigent login`), not an agent-scoped capture key.");
+    process.exitCode = 1;
+    return;
+  }
+  const out = await res.json();
+  config.agents = { ...config.agents ?? {}, [name]: { agentId: out.agentId, key: out.apiKey, harness: opts.harness } };
+  saveConfig(config);
+  const base = server.replace(/\/$/, "");
+  console.log(`\u2713 registered agent '${name}' \u2014 scoped key saved to ${CONFIG_PATH}
+`);
+  console.log("Capture options for this agent:");
+  console.log(`  \u2022 Claude Code (this machine):  effigent install claude --agent ${name}`);
+  console.log("  \u2022 SDK / OpenLLMetry agent \u2014 export before running it:");
+  console.log(`      export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${base}/v1/traces`);
+  console.log("      export OTEL_EXPORTER_OTLP_PROTOCOL=http/json");
+  console.log("      export OTEL_EXPORTER_OTLP_COMPRESSION=none");
+  console.log(`      export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer ${out.apiKey}"`);
+});
+agentCmd.command("list").description("List agents registered from this machine (names, harness, key presence)").action(() => {
+  const config = loadConfig();
+  const agents = Object.entries(config.agents ?? {});
+  if (agents.length === 0) {
+    console.log("No agents registered here yet \u2014 run `effigent agent add <name>`.");
+    return;
+  }
+  for (const [name, a] of agents) {
+    console.log(`  ${name.padEnd(28)} ${(a.harness ?? "\u2014").padEnd(14)} key:${a.key ? "\u2713" : "\u2717"}  ${a.agentId}`);
+  }
+});
+var installCmd = program2.command("install").description("Wire up capture on this machine for a registered agent");
+function otelEnv(base, key) {
+  return [
+    `export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${base}/v1/traces`,
+    "export OTEL_EXPORTER_OTLP_PROTOCOL=http/json",
+    "export OTEL_EXPORTER_OTLP_COMPRESSION=none",
+    `export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer ${key}"`
+  ].join("\n");
+}
+var OTEL_HARNESSES = {
+  codex: {
+    title: "OpenAI Codex CLI (native OTel)",
+    render: (base, key) => `# Set before launching codex \u2014 it exports spans natively:
+${otelEnv(base, key)}
+codex "your task"`
+  },
+  python: {
+    title: "Python agents \u2014 LangGraph / CrewAI / AutoGen / OpenAI Agents (OpenLLMetry)",
+    // baseUrl/api_endpoint is the BASE — the SDK appends /v1/traces itself
+    // (passing the full path double-appends → 404).
+    render: (base, key) => `pip install traceloop-sdk
+
+# once at startup \u2014 auto-instruments openai/anthropic + the frameworks:
+from traceloop.sdk import Traceloop
+Traceloop.init(
+    api_endpoint="${base}",
+    headers={"Authorization": "Bearer ${key}"},
+)`
+  },
+  node: {
+    title: "Node / TS agents (OpenLLMetry)",
+    // baseUrl is the BASE — @traceloop/node-server-sdk appends /v1/traces.
+    render: (base, key) => `npm i @traceloop/node-server-sdk
+
+// before your agent runs \u2014 auto-instruments the openai/anthropic clients:
+import * as traceloop from "@traceloop/node-server-sdk";
+traceloop.initialize({
+  baseUrl: "${base}",
+  headers: { Authorization: "Bearer ${key}" },
+  disableBatch: true,
+});`
+  },
+  proxy: {
+    title: "Proxy fallback \u2014 any OpenAI-compatible agent you cannot instrument",
+    render: (base, key) => `# Start the local capturing gateway (forwards to OpenAI, mirrors each call to Effigent):
+effigent proxy --agent <name>
+
+# Point your agent's OpenAI client at it \u2014 no SDK, no code changes:
+export OPENAI_BASE_URL=http://localhost:4319/v1
+# (your existing OPENAI_API_KEY still authenticates upstream; the proxy never stores it)
+
+# Reports to: ${base}/v1/traces  \xB7  Bearer ${key}`
+  },
+  generic: {
+    title: "Any OTel-capable agent",
+    render: (base, key) => otelEnv(base, key)
+  }
+};
+function printOtelInstall(harness, agentName) {
+  const config = loadConfig();
+  const entry = config.agents?.[agentName];
+  const server = process.env.EFFIGENT_SERVER ?? config.server;
+  if (!entry || !server) {
+    console.error(`Agent '${agentName}' not registered here \u2014 run \`effigent agent add ${agentName}\` first.`);
+    process.exitCode = 2;
+    return;
+  }
+  const recipe = OTEL_HARNESSES[harness] ?? OTEL_HARNESSES.generic;
+  const base = server.replace(/\/$/, "");
+  console.log(`# ${recipe.title} \u2014 capture as agent '${agentName}'
+`);
+  console.log(recipe.render(base, entry.key));
+  console.log("\n# Runs appear in the dashboard under this agent after the exporter flushes.");
+}
+installCmd.command("otel").description("Print a ready-to-paste OTel capture setup (key filled in) for any harness").requiredOption("--agent <name>", "registered agent name (from `effigent agent add`)").option("--harness <name>", `one of: ${Object.keys(OTEL_HARNESSES).join(", ")}`, "generic").action((opts) => printOtelInstall(opts.harness, opts.agent));
+for (const harness of ["codex", "python", "node", "proxy"]) {
+  installCmd.command(harness).description(`Print the ${OTEL_HARNESSES[harness].title} setup for a registered agent`).requiredOption("--agent <name>", "registered agent name (from `effigent agent add`)").action((opts) => printOtelInstall(harness, opts.agent));
+}
+installCmd.command("claude").description("Install a Claude Code SessionEnd hook that uploads each finished session (event-driven; no polling)").requiredOption("--agent <name>", "registered agent name (from `effigent agent add`)").action((opts) => {
+  const config = loadConfig();
+  if (!config.agents?.[opts.agent]) {
+    console.error(`Agent '${opts.agent}' not found in config \u2014 run \`effigent agent add ${opts.agent}\` first.`);
+    process.exitCode = 2;
+    return;
+  }
+  const settingsPath = (0, import_node_path2.join)((0, import_node_os2.homedir)(), ".claude", "settings.json");
+  let settings = {};
+  if ((0, import_node_fs3.existsSync)(settingsPath)) {
+    try {
+      settings = JSON.parse((0, import_node_fs3.readFileSync)(settingsPath, "utf8"));
+    } catch {
+      console.error(`Could not parse ${settingsPath} \u2014 fix or remove it, then retry.`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+  const bin = `${process.execPath} ${(0, import_node_path2.resolve)(process.argv[1])}`;
+  const hooks = settings.hooks ??= {};
+  const addHook = (event, command, marker) => {
+    const groups = Array.isArray(hooks[event]) ? hooks[event] : [];
+    const already = groups.some((g) => (g.hooks ?? []).some((h) => typeof h.command === "string" && h.command.includes(marker)));
+    if (!already) {
+      groups.push({ hooks: [{ type: "command", command }] });
+      hooks[event] = groups;
+    }
+    return !already;
+  };
+  const addedEnd = addHook("SessionEnd", `${bin} claude-hook --agent ${opts.agent}`, `claude-hook --agent ${opts.agent}`);
+  const addedStart = addHook("SessionStart", `${bin} claude-refresh --agent ${opts.agent}`, `claude-refresh --agent ${opts.agent}`);
+  if (!addedEnd && !addedStart) {
+    console.log(`\u2713 hooks for '${opts.agent}' already present in ${settingsPath}`);
+    return;
+  }
+  (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(settingsPath), { recursive: true });
+  (0, import_node_fs3.writeFileSync)(settingsPath, JSON.stringify(settings, null, 2));
+  console.log(`\u2713 installed hooks for '${opts.agent}' in ${settingsPath}`);
+  console.log("  SessionEnd \u2192 uploads each finished session \xB7 SessionStart \u2192 keeps the optimization bundle fresh (auto-injection).");
+});
+program2.command("claude-refresh").description("(internal) Claude Code SessionStart hook \u2014 refreshes the optimization bundle + skill; throttled and fail-open").requiredOption("--agent <name>", "registered agent name").action(async (opts) => {
+  try {
+    const bundleDir = (0, import_node_path2.join)(EFFIGENT_HOME, "bundles", slugify(opts.agent));
+    const bundlePath = (0, import_node_path2.join)(bundleDir, "bundle.json");
+    if ((0, import_node_fs3.existsSync)(bundlePath) && Date.now() - (0, import_node_fs3.statSync)(bundlePath).mtimeMs < 15 * 6e4) return;
+    const config = loadConfig();
+    const server = process.env.EFFIGENT_SERVER ?? config.server;
+    const apiKey = config.agents?.[opts.agent]?.key ?? config.apiKey;
+    if (!server || !apiKey) return;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 5e3);
+    const res = await fetch(
+      `${server.replace(/\/$/, "")}/api/v1/optimize?agent=${encodeURIComponent(opts.agent)}&mark=1`,
+      { headers: { authorization: `Bearer ${apiKey}` }, signal: ctl.signal }
+    );
+    clearTimeout(timer);
+    if (!res.ok) return;
+    const bundle = await res.json();
+    (0, import_node_fs3.mkdirSync)(bundleDir, { recursive: true });
+    (0, import_node_fs3.writeFileSync)(bundlePath, JSON.stringify(bundle, null, 2));
+    const ready = bundle.tools.filter((t) => t.replay?.status === "ready");
+    (0, import_node_fs3.writeFileSync)(
+      (0, import_node_path2.join)(bundleDir, "context.md"),
+      renderSkill(bundle, new Set(ready.filter(isExecutable).map((t) => t.id)), "context")
+    );
+    if (ready.length > 0 || (bundle.knowledge?.worthIt ?? false)) {
+      const executables = new Set(ready.filter(isExecutable).map((t) => t.id));
+      const skillDir = (0, import_node_path2.join)((0, import_node_os2.homedir)(), ".claude", "skills", `effigent-${slugify(opts.agent)}`);
+      (0, import_node_fs3.mkdirSync)(skillDir, { recursive: true });
+      (0, import_node_fs3.writeFileSync)((0, import_node_path2.join)(skillDir, "SKILL.md"), renderSkill(bundle, executables));
+      console.error(`[effigent] bundle refreshed: ${ready.length} tool(s), ${bundle.knowledge?.entries.length ?? 0} fact(s)`);
+    }
+  } catch {
+  }
+});
+program2.command("claude-hook").description("(internal) Claude Code SessionEnd hook \u2014 uploads the finished session for a scoped agent").requiredOption("--agent <name>", "registered agent name").action(async (opts) => {
+  const config = loadConfig();
+  const entry = config.agents?.[opts.agent];
+  const server = process.env.EFFIGENT_SERVER ?? config.server;
+  if (!entry || !server) {
+    console.error(`[effigent] claude-hook: agent '${opts.agent}' or server not configured`);
+    process.exitCode = 2;
+    return;
+  }
+  let payload;
+  try {
+    payload = JSON.parse((0, import_node_fs3.readFileSync)(0, "utf8"));
+  } catch {
+    console.error("[effigent] claude-hook: could not read hook JSON from stdin");
+    process.exitCode = 1;
+    return;
+  }
+  const { session_id: sessionId, transcript_path: transcriptPath } = payload;
+  if (!sessionId || !transcriptPath || !(0, import_node_fs3.existsSync)(transcriptPath)) {
+    console.error("[effigent] claude-hook: missing/unreadable session_id or transcript_path");
+    process.exitCode = 1;
+    return;
+  }
+  const r = await uploadSessionFile({ server, apiKey: entry.key }, transcriptPath, sessionId, opts.agent);
+  console.error(
+    r.ok ? `[effigent] uploaded session ${sessionId} as ${opts.agent}` : `[effigent] upload failed (HTTP ${r.status}) ${r.detail ?? ""}`
+  );
+  process.exitCode = r.ok ? 0 : 1;
+});
+var slugify = (s) => s.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+var EXEC_TOOLS = /* @__PURE__ */ new Set(["bash", "read", "glob", "grep", "ls", "webfetch", "web_fetch"]);
+function isExecutable(t) {
+  return t.body.length > 0 && t.body.every(
+    (s) => !s.guarded && (s.class === "mechanical" || s.class === "cacheable") && EXEC_TOOLS.has(s.tool.toLowerCase()) && s.substitutions.every(
+      (sub) => sub.kind === "param" || sub.kind === "derive" && !!sub.method && (sub.method.startsWith("json:") || sub.method.startsWith("line:"))
+    )
+  );
+}
+function paramUsage(t) {
+  return t.params.map((p) => `<${p.name}:${p.type}>`).join(" ");
+}
+function renderSkill(bundle, executables, format = "skill") {
+  const lines = [];
+  if (format === "skill") {
+    lines.push("---");
+    lines.push(`name: effigent-${slugify(bundle.agentId)}`);
+    lines.push(
+      `description: Auto-generated by Effigent for agent "${bundle.agentId}" \u2014 known facts and compiled tools from its last ${bundle.runCount} runs. Consult BEFORE exploring the repo; run compiled tools INSTEAD of performing their steps.`
+    );
+    lines.push("---", "");
+  }
+  lines.push(`# Effigent \u2014 ${bundle.agentId}`);
+  lines.push("");
+  lines.push(
+    `Generated ${bundle.generatedAt ?? "now"} from the last ${bundle.runCount} runs. Do not edit \u2014 regenerate with \`effigent optimize\`.`
+  );
+  const ready = bundle.tools.filter((t) => t.replay?.status === "ready");
+  const exec = ready.filter((t) => executables.has(t.id));
+  const recipes = ready.filter((t) => !executables.has(t.id));
+  if (exec.length > 0) {
+    lines.push("", "## Compiled tools \u2014 run these INSTEAD of performing the steps", "");
+    lines.push(
+      "Each command executes the whole recorded procedure deterministically in code \u2014 no reasoning, no intermediate results in context. It prints only the final answer."
+    );
+    for (const t of exec) {
+      lines.push("", `### ${t.name}`);
+      lines.push("```", `effigent tool ${bundle.agentId} ${t.name}${t.params.length ? ` ${paramUsage(t)}` : ""}`.trim(), "```");
+      for (const p of t.params) {
+        lines.push(`- \`${p.name}\` (${p.type}, from ${p.source}) \u2014 e.g. \`${p.examples[0] ?? ""}\``);
+      }
+      if (t.postcondition) lines.push(`Returns: \`${t.postcondition.slice(0, 120).replace(/`/g, "'")}\``);
+      lines.push(
+        `_(${t.body.length} steps \xB7 validated ${t.replay.runsChecked} replays at ${Math.round(t.replay.passRate * 100)}% \xB7 saves ~$${t.savings.perRunUsd}/run)_`
+      );
+    }
+  }
+  if (recipes.length > 0) {
+    lines.push("", "## Validated recipes (not yet executable as code)", "");
+    lines.push("Follow exactly \u2014 the arguments are known in advance, so do not re-derive them.");
+    for (const t of recipes) {
+      lines.push("", `### ${t.name} \u2014 ${t.body.length} steps, saves ~$${t.savings.perRunUsd}/run`);
+      t.body.forEach((s, i) => {
+        lines.push(`${i + 1}. **${s.tool}**${s.guarded ? " \u26A0 side-effect \u2014 verify first" : ""} \u2014 \`${s.argTemplate.slice(0, 160).replace(/`/g, "'")}\``);
+      });
+    }
+  }
+  const facts = bundle.knowledge?.entries ?? [];
+  if (facts.length > 0) {
+    lines.push("", "## Known facts \u2014 read these, do NOT re-run the lookups", "");
+    for (const f of facts) {
+      const key = f.key.replace(/`/g, "'").slice(0, 160);
+      if (f.value.length <= 80 && !f.value.includes("\n")) {
+        lines.push(`- ${f.kind} \`${key}\` \u2192 \`${f.value.replace(/`/g, "'")}\` _(${f.support}\xD7)_`);
+      } else {
+        lines.push("", `### ${f.kind} \xB7 \`${key}\` _(${f.support}\xD7 stable)_`);
+        lines.push("```", f.value, "```");
+      }
+    }
+  }
+  const shadow = bundle.tools.length - ready.length;
+  if (shadow > 0) lines.push("", `_${shadow} candidate procedure(s) still in shadow validation \u2014 not installed._`);
+  lines.push("");
+  return lines.join("\n");
+}
+program2.command("optimize").description("Download the activation bundle (validated tools + knowledge graph) and install it into the running agent (Claude Code: a generated skill)").argument("<agent>", "registered agent name").option("--server <url>", "effigent server base URL (default: effigent login config)").option("--key <apiKey>", "capture key (default: the agent\u2019s scoped key, then the tenant key)").option("--out <dir>", "bundle output directory (default ~/.effigent/bundles/<agent>)").option("--no-install", "write the bundle only \u2014 skip the Claude Code skill").option("--codex [dir]", "also inject into Codex: maintain a managed Effigent section in <dir>/AGENTS.md (default: cwd)").option("--no-mark", "do not stamp the agent as optimized").action(async (agentName, opts) => {
+  const config = loadConfig();
+  const server = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+  const apiKey = opts.key ?? config.agents?.[agentName]?.key ?? process.env.EFFIGENT_API_KEY ?? config.apiKey;
+  if (!server || !apiKey) {
+    console.error("No server/key: run `effigent login` (or `effigent agent add`) first, or pass --server/--key.");
+    process.exitCode = 2;
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(
+      `${server.replace(/\/$/, "")}/api/v1/optimize?agent=${encodeURIComponent(agentName)}${opts.mark === false ? "" : "&mark=1"}`,
+      { headers: { authorization: `Bearer ${apiKey}` } }
+    );
+  } catch (err) {
+    console.error(`Cannot reach ${server}: ${err instanceof Error ? err.message : err}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!res.ok) {
+    console.error(`Optimize failed (HTTP ${res.status}): ${await res.text()}`);
+    process.exitCode = 1;
+    return;
+  }
+  const bundle = await res.json();
+  if (bundle.note) console.log(`! ${bundle.note}`);
+  const outDir = (0, import_node_path2.resolve)(opts.out ?? (0, import_node_path2.join)(EFFIGENT_HOME, "bundles", slugify(agentName)));
+  (0, import_node_fs3.mkdirSync)(outDir, { recursive: true });
+  (0, import_node_fs3.writeFileSync)((0, import_node_path2.join)(outDir, "bundle.json"), JSON.stringify(bundle, null, 2));
+  const allExec = new Set(
+    bundle.tools.filter((t) => t.replay?.status === "ready" && isExecutable(t)).map((t) => t.id)
+  );
+  (0, import_node_fs3.writeFileSync)((0, import_node_path2.join)(outDir, "context.md"), renderSkill(bundle, allExec, "context"));
+  console.log(`\u2713 bundle written: ${(0, import_node_path2.join)(outDir, "bundle.json")} (+ context.md for SDK/Docker agents)`);
+  if (opts.codex !== void 0) {
+    const dir = (0, import_node_path2.resolve)(typeof opts.codex === "string" && opts.codex.length > 0 ? opts.codex : ".");
+    const agentsPath = (0, import_node_path2.join)(dir, "AGENTS.md");
+    const START = "<!-- effigent:start -->";
+    const END = "<!-- effigent:end -->";
+    const section = `${START}
+${renderSkill(bundle, allExec, "context")}
+${END}`;
+    let doc = (0, import_node_fs3.existsSync)(agentsPath) ? (0, import_node_fs3.readFileSync)(agentsPath, "utf8") : "";
+    if (doc.includes(START) && doc.includes(END)) {
+      doc = doc.slice(0, doc.indexOf(START)) + section + doc.slice(doc.indexOf(END) + END.length);
+    } else {
+      doc = doc.trimEnd() + (doc ? "\n\n" : "") + section + "\n";
+    }
+    (0, import_node_fs3.writeFileSync)(agentsPath, doc);
+    console.log(`\u2713 Codex injection: managed Effigent section in ${agentsPath}`);
+  }
+  const ready = bundle.tools.filter((t) => t.replay?.status === "ready").length;
+  const facts = bundle.knowledge?.entries.length ?? 0;
+  console.log(
+    `  ${ready} validated tool(s) \xB7 ${facts} knowledge fact(s)` + (bundle.knowledge ? ` covering ${Math.round((bundle.knowledge.coverage ?? 0) * 100)}% of exploration` : "")
+  );
+  if (bundle.drift?.changed) {
+    console.log(`  \u26A0 recent behavior drift detected (${bundle.drift.changedAt ?? "recently"}) \u2014 bundle reflects the newest window`);
+  }
+  if (opts.install !== false) {
+    if (ready === 0 && !(bundle.knowledge?.worthIt ?? false)) {
+      console.log("  nothing activatable yet \u2014 skill not installed (bundle.json kept for inspection)");
+      return;
+    }
+    const executables = new Set(
+      bundle.tools.filter((t) => t.replay?.status === "ready" && isExecutable(t)).map((t) => t.id)
+    );
+    const skillDir = (0, import_node_path2.join)((0, import_node_os2.homedir)(), ".claude", "skills", `effigent-${slugify(agentName)}`);
+    (0, import_node_fs3.mkdirSync)(skillDir, { recursive: true });
+    (0, import_node_fs3.writeFileSync)((0, import_node_path2.join)(skillDir, "SKILL.md"), renderSkill(bundle, executables));
+    console.log(`\u2713 Claude Code skill installed: ${skillDir}`);
+    console.log(
+      `  ${executables.size} tool(s) run as CODE via \`effigent tool\` \u2014 zero LLM tokens inside; ${ready - executables.size} stay as recipes; facts replace re-exploration.`
+    );
+    console.log("  SDK/OTel agents: load bundle.json programmatically (facts \u2192 system context, tools \u2192 functions).");
+  }
+});
+function extractDerived(raw, method) {
+  if (method.startsWith("json:")) {
+    const path = method.slice(5);
+    let v = JSON.parse(raw);
+    if (path !== "") {
+      for (const part of path.split(".")) {
+        if (v === null || typeof v !== "object") throw new Error(`json path ${path} not found`);
+        v = v[part];
+      }
+    }
+    if (v === null || v === void 0 || typeof v === "object") throw new Error(`json path ${path} not a scalar`);
+    return String(v);
+  }
+  if (method.startsWith("line:")) {
+    const k = Number(method.slice(5));
+    const line = raw.split("\n")[k];
+    if (line === void 0) throw new Error(`line ${k} out of range`);
+    return line.trim();
+  }
+  throw new Error(`non-constructive derivation '${method}'`);
+}
+var jsonEscape = (v) => JSON.stringify(v).slice(1, -1);
+function globToRegex(pattern) {
+  const esc2 = pattern.replace(/[.+^$()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "\xA7\xA7SLASH\xA7\xA7").replace(/\*\*/g, "\xA7\xA7ALL\xA7\xA7").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/§§SLASH§§/g, "(?:.*/)?").replace(/§§ALL§§/g, ".*");
+  return new RegExp(`^${esc2}$`);
+}
+function* walkFiles(dir, depth = 0) {
+  if (depth > 12) return;
+  const entries = (() => {
+    try {
+      return (0, import_node_fs3.readdirSync)(dir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+  })();
+  for (const e of entries) {
+    if (e.name === "node_modules" || e.name === ".git" || e.name === "dist" || e.name === ".next") continue;
+    const p = (0, import_node_path2.join)(dir, e.name);
+    if (e.isDirectory()) yield* walkFiles(p, depth + 1);
+    else if (e.isFile()) yield p;
+  }
+}
+async function execStep(tool, args) {
+  const t = tool.toLowerCase();
+  if (t === "bash") {
+    const cmd = String(args.command ?? "");
+    const r = (0, import_node_child_process.spawnSync)("/bin/sh", ["-c", cmd], { encoding: "utf8", timeout: 6e4, maxBuffer: 4 * 1024 * 1024 });
+    if (r.status !== 0) throw new Error(`command failed (${r.status}): ${(r.stderr || r.stdout || "").slice(0, 300)}`);
+    return (r.stdout ?? "").slice(0, 1e5);
+  }
+  if (t === "read") {
+    return (0, import_node_fs3.readFileSync)(String(args.file_path ?? args.path ?? ""), "utf8").slice(0, 1e5);
+  }
+  if (t === "glob") {
+    const pattern = String(args.pattern ?? "");
+    const re = globToRegex(pattern);
+    const out = [];
+    for (const f of walkFiles(process.cwd())) {
+      const rel = f.slice(process.cwd().length + 1);
+      if (re.test(rel)) {
+        out.push(rel);
+        if (out.length >= 2e3) break;
+      }
+    }
+    return out.sort().join("\n");
+  }
+  if (t === "grep" || t === "ls") {
+    if (t === "ls") {
+      const dir = String(args.path ?? ".");
+      return (0, import_node_fs3.readdirSync)((0, import_node_path2.resolve)(dir)).sort().join("\n");
+    }
+    const pattern = String(args.pattern ?? "");
+    let re;
+    try {
+      re = new RegExp(pattern);
+    } catch {
+      re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    }
+    const root = (0, import_node_path2.resolve)(String(args.path ?? "."));
+    const matches = [];
+    for (const f of walkFiles(root)) {
+      let text;
+      try {
+        text = (0, import_node_fs3.readFileSync)(f, "utf8");
+      } catch {
+        continue;
+      }
+      if (text.length > 1e6 || text.includes("\0")) continue;
+      const rel = f.slice(process.cwd().length + 1) || f;
+      text.split("\n").forEach((line, i) => {
+        if (matches.length < 200 && re.test(line)) matches.push(`${rel}:${i + 1}:${line.slice(0, 200)}`);
+      });
+      if (matches.length >= 200) break;
+    }
+    return matches.join("\n");
+  }
+  if (t === "webfetch" || t === "web_fetch") {
+    const res = await fetch(String(args.url ?? ""));
+    if (!res.ok) throw new Error(`fetch failed: HTTP ${res.status}`);
+    return (await res.text()).slice(0, 1e5);
+  }
+  throw new Error(`executor does not implement tool '${tool}'`);
+}
+program2.command("tool").description("Execute a compiled ToolSpec deterministically \u2014 code instead of LLM (prints only the final answer)").argument("<agent>", "agent name (bundle from `effigent optimize`)").argument("<name>", "tool name from the bundle").argument("[params...]", "parameter values, in the order listed by the skill").option("-v, --verbose", "print per-step trace to stderr").action(async (agentName, toolName, params, opts) => {
+  const bundlePath = (0, import_node_path2.join)(EFFIGENT_HOME, "bundles", slugify(agentName), "bundle.json");
+  if (!(0, import_node_fs3.existsSync)(bundlePath)) {
+    console.error(`No bundle for '${agentName}' \u2014 run \`effigent optimize ${agentName}\` first.`);
+    process.exitCode = 2;
+    return;
+  }
+  const bundle = JSON.parse((0, import_node_fs3.readFileSync)(bundlePath, "utf8"));
+  const tool = bundle.tools.find((t) => t.name === toolName || t.id === toolName);
+  if (!tool) {
+    console.error(`Tool '${toolName}' not in the bundle. Available: ${bundle.tools.map((t) => t.name).join(", ") || "(none)"}`);
+    process.exitCode = 2;
+    return;
+  }
+  if (!isExecutable(tool)) {
+    console.error(`'${toolName}' is not executable as code (side-effect or non-constructive derivation) \u2014 follow its recipe in the skill instead.`);
+    process.exitCode = 2;
+    return;
+  }
+  if (params.length < tool.params.length) {
+    console.error(`Missing parameters. Usage: effigent tool ${agentName} ${tool.name} ${paramUsage(tool)}`);
+    process.exitCode = 2;
+    return;
+  }
+  const paramValues = new Map(tool.params.map((p, i) => [p.name, params[i]]));
+  const outputs = /* @__PURE__ */ new Map();
+  let final = "";
+  for (const step of tool.body) {
+    const argJson = step.argTemplate.replace(/\$\{([^}]+)\}/g, (_m, token) => {
+      const d = token.match(/^derive\(c(\d+)\.(.+)\)$/);
+      if (d) {
+        const src = outputs.get(Number(d[1]));
+        if (src === void 0) throw new Error(`step ${step.column}: derivation source c${d[1]} not yet executed`);
+        return jsonEscape(extractDerived(src, d[2]));
+      }
+      const v = paramValues.get(token);
+      if (v === void 0) throw new Error(`step ${step.column}: unbound parameter ${token}`);
+      return jsonEscape(v);
+    });
+    let args;
+    try {
+      args = JSON.parse(argJson);
+    } catch {
+      throw new Error(`step ${step.column}: resolved arguments are not valid JSON: ${argJson.slice(0, 200)}`);
+    }
+    if (opts.verbose) console.error(`\u2192 ${step.tool} ${JSON.stringify(args).slice(0, 200)}`);
+    const out = await execStep(step.tool, args);
+    outputs.set(step.resultColumn ?? step.column + 1, out);
+    final = out;
+    if (step.expectedOutputTemplate && !step.expectedOutputTemplate.includes("\u27E8\xB7\u27E9")) {
+      const norm = (s) => s.replace(/\s+/g, " ").trim();
+      if (norm(out) !== norm(step.expectedOutputTemplate)) {
+        console.error(`\u26A0 step ${step.column}: output differs from the validated expectation \u2014 repo/world state may have changed; consider re-running \`effigent optimize\`.`);
+      }
+    }
+  }
+  process.stdout.write(final.endsWith("\n") ? final : `${final}
+`);
+});
+function hex(bytes) {
+  return (0, import_node_crypto4.createHash)("sha256").update(`${(0, import_node_crypto4.randomUUID)()}:${bytes}`).digest("hex").slice(0, bytes * 2);
+}
+program2.command("proxy").description("Run a local OpenAI-compatible capturing gateway (capture fallback for un-instrumentable agents)").requiredOption("--agent <name>", "registered agent name (attribution)").option("--port <n>", "local port to listen on", "4319").option("--upstream <url>", "upstream OpenAI-compatible base", "https://api.openai.com").option("--server <url>", "effigent collector (default: login config)").option("--key <apiKey>", "capture key (default: the agent\u2019s scoped key, then tenant key)").action(async (opts) => {
+  const { createServer } = await import("node:http");
+  const { Readable } = await import("node:stream");
+  const config = loadConfig();
+  const server = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server;
+  const apiKey = opts.key ?? config.agents?.[opts.agent]?.key ?? config.apiKey;
+  if (!server || !apiKey) {
+    console.error("No server/key: run `effigent login` / `effigent agent add` first, or pass --server/--key.");
+    process.exitCode = 2;
+    return;
+  }
+  const collector = `${server.replace(/\/$/, "")}/v1/traces`;
+  const upstream = opts.upstream.replace(/\/$/, "");
+  const port = Number(opts.port);
+  const sessionId = `proxy-${(0, import_node_crypto4.randomUUID)()}`;
+  const traceId = hex(16);
+  const emit = (model, startMs, endMs, promptText, completion, usage, isError) => {
+    const attributes = [
+      { key: "gen_ai.conversation.id", value: { stringValue: sessionId } },
+      { key: "gen_ai.operation.name", value: { stringValue: "chat" } },
+      { key: "gen_ai.provider.name", value: { stringValue: "openai" } },
+      { key: "gen_ai.request.model", value: { stringValue: model } },
+      { key: "gen_ai.response.model", value: { stringValue: model } },
+      { key: "gen_ai.prompt", value: { stringValue: promptText.slice(0, 8e3) } },
+      { key: "gen_ai.completion", value: { stringValue: completion.slice(0, 8e3) } }
+    ];
+    if (usage) {
+      attributes.push({ key: "gen_ai.usage.input_tokens", value: { intValue: usage.input } });
+      attributes.push({ key: "gen_ai.usage.output_tokens", value: { intValue: usage.output } });
+      if (usage.cached) attributes.push({ key: "gen_ai.usage.cached_tokens", value: { intValue: usage.cached } });
+    }
+    const body = { resourceSpans: [{ resource: { attributes: [{ key: "service.name", value: { stringValue: opts.agent } }] }, scopeSpans: [{ spans: [{
+      traceId,
+      spanId: hex(8),
+      name: `chat ${model}`,
+      startTimeUnixNano: `${startMs}000000`,
+      endTimeUnixNano: `${endMs}000000`,
+      status: isError ? { code: 2 } : void 0,
+      attributes
+    }] }] }] };
+    fetch(collector, { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => {
+    });
+  };
+  const promptOf = (reqJson) => {
+    const msgs = reqJson.messages ?? [];
+    const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+    return typeof lastUser?.content === "string" ? lastUser.content : JSON.stringify(lastUser?.content ?? "");
+  };
+  const srv = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", async () => {
+      const bodyBuf = Buffer.concat(chunks);
+      const isChat = (req.url ?? "").includes("/chat/completions") && req.method === "POST";
+      const startMs = Date.now();
+      const headers = {};
+      if (req.headers["authorization"]) headers["authorization"] = req.headers["authorization"];
+      if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
+      let up;
+      try {
+        up = await fetch(`${upstream}${req.url}`, { method: req.method, headers, body: bodyBuf.length ? bodyBuf : void 0 });
+      } catch (err) {
+        res.writeHead(502, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: `proxy upstream unreachable: ${err instanceof Error ? err.message : err}` }));
+        return;
+      }
+      res.writeHead(up.status, { "content-type": up.headers.get("content-type") ?? "application/json" });
+      let reqJson = {};
+      try {
+        reqJson = JSON.parse(bodyBuf.toString("utf8"));
+      } catch {
+      }
+      const streaming = reqJson.stream === true;
+      if (isChat && !streaming) {
+        const text = await up.text();
+        res.end(text);
+        try {
+          const j = JSON.parse(text);
+          const model = j.model ?? String(reqJson.model ?? "unknown");
+          const content = j.choices?.[0]?.message?.content ?? (j.choices?.[0]?.message?.tool_calls ? "[tool_calls]" : "");
+          const u = j.usage ? { input: j.usage.prompt_tokens ?? 0, output: j.usage.completion_tokens ?? 0, cached: j.usage.prompt_tokens_details?.cached_tokens } : void 0;
+          emit(model, startMs, Date.now(), promptOf(reqJson), content, u, up.status >= 400);
+        } catch {
+        }
+      } else if (up.body) {
+        Readable.fromWeb(up.body).pipe(res);
+        if (isChat) emit(String(reqJson.model ?? "unknown"), startMs, Date.now(), promptOf(reqJson), "[streamed]", void 0, up.status >= 400);
+      } else {
+        res.end();
+      }
+    });
+  });
+  srv.listen(port, () => {
+    console.error(`[effigent] proxy listening on http://localhost:${port}  \u2192  ${upstream}`);
+    console.error(`[effigent] point your agent at it:  export OPENAI_BASE_URL=http://localhost:${port}/v1`);
+    console.error(`[effigent] capturing as agent '${opts.agent}' (session ${sessionId.slice(0, 20)}\u2026). Ctrl-C to stop.`);
+  });
 });
 program2.parseAsync().catch((err) => {
   console.error(err instanceof Error ? err.message : err);

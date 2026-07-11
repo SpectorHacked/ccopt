@@ -1,6 +1,6 @@
 /**
  * The Waste Report renderer — self-contained HTML (inline CSS, inline SVG
- * chains), plus the JSON artifact. Used by `ccopt analyze` locally and by the
+ * chains), plus the JSON artifact. Used by `effigent analyze` locally and by the
  * hosted report viewer.
  */
 
@@ -87,7 +87,7 @@ function findingCard(f: Finding, rank: number): string {
 }
 
 export function renderReportHtml(report: WasteReport, opts: { title?: string } = {}): string {
-  const title = opts.title ?? 'ccopt — Agent Waste Report';
+  const title = opts.title ?? 'Effigent — Agent Waste Report';
   const t = report.totals;
   const topClusters = report.clusters.filter((c) => c.nRuns >= 2).slice(0, 12);
   return `<!doctype html>

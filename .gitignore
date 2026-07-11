@@ -6,8 +6,8 @@ data/
 *.log
 .env.local
 .env*.local
-ccopt-report.html
-ccopt-report.json
+effigent-report.html
+effigent-report.json
 demo-report.html
 demo-report.json
 .env
@@ -15,9 +15,12 @@ demo-report.json
 # single-file distribution: everything in /dist is generated, but the bundled
 # CLI is committed so the GitHub Action and raw-URL install work
 /dist/*
-!/dist/ccopt.cjs
+!/dist/effigent.cjs
 
 # internal business docs stay local
-ccopt-mvp-spec.md
+effigent-mvp-spec.md
 .vercel
 .env*
+
+# TypeScript incremental build info
+*.tsbuildinfo

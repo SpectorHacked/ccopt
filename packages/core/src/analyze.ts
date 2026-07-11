@@ -1,6 +1,6 @@
 /**
  * End-to-end analysis: runs → graphs → clusters → findings → WasteReport.
- * Same engine for local mode (`ccopt analyze`) and the hosted pipeline.
+ * Same engine for local mode (`effigent analyze`) and the hosted pipeline.
  */
 
 import type { Cluster, ClusterSummary, Run, RunGraph, WasteReport } from './types.js';

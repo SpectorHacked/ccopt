@@ -21,11 +21,11 @@ export default function ApiDocs() {
         <h2 className="h-serif" style={{ fontSize: 24, margin: '0 0 10px' }}>POST /api/v1/ingest — transcripts</h2>
         <CodeBlock title="gzipped Claude Code JSONL">{`curl -X POST ${COLLECTOR_URL}/api/v1/ingest \\
   -H "Authorization: Bearer <scoped-key>" \\
-  -H "x-ccopt-session-id: <session-id>" \\
+  -H "x-effigent-session-id: <session-id>" \\
   --data-binary @session.jsonl.gz
 
 # → {"parsed":true,"agentId":"billing-agent","costUsd":0.0111}
-# large sessions: send a pre-parsed Run with  x-ccopt-format: run`}</CodeBlock>
+# large sessions: send a pre-parsed Run with  x-effigent-format: run`}</CodeBlock>
       </DocSection>
 
       <DocSection>

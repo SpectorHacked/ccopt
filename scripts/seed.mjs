@@ -9,7 +9,7 @@
  */
 import { gzipSync } from 'node:zlib';
 import { randomUUID } from 'node:crypto';
-import { scoreDeterminism } from '@ccopt/core';
+import { scoreDeterminism } from '@effigent/core';
 
 const SERVER = (process.argv[2] || process.env.CCOPT_SERVER || 'http://localhost:8788').replace(/\/$/, '');
 const ADMIN = process.argv[3] || process.env.CCOPT_ADMIN_TOKEN || 'testadmintoken';
@@ -85,7 +85,7 @@ async function main() {
     const body = gzipSync(Buffer.from(transcript(sid, steps)));
     const r = await fetch(`${SERVER}/api/v1/ingest`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/octet-stream', 'content-encoding': 'gzip', 'x-ccopt-session-id': sid, 'x-ccopt-agent-id': agent },
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/octet-stream', 'content-encoding': 'gzip', 'x-effigent-session-id': sid, 'x-effigent-agent-id': agent },
       body,
     });
     if (!r.ok) console.error(`  ingest ${sid} failed: ${r.status} ${await r.text()}`);

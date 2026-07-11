@@ -7,7 +7,7 @@
  */
 
 import { writeFileSync } from 'node:fs';
-import { parseTranscript, analyzeRuns, renderReportHtml } from '@ccopt/core';
+import { parseTranscript, analyzeRuns, renderReportHtml } from '@effigent/core';
 
 function transcript({ sessionId, cwd, prompt, tools, finalText, model, startedAt, inputTokens = 6000, outputTokens = 400 }) {
   const lines = [];
@@ -77,7 +77,7 @@ for (let i = 0; i < 8; i++) {
 
 const valid = runs.filter(Boolean);
 const { report } = analyzeRuns(valid, '2026-07-01T00:00:00.000Z');
-writeFileSync(new URL('../demo-report.html', import.meta.url), renderReportHtml(report, { title: 'ccopt demo — Agent Waste Report' }));
+writeFileSync(new URL('../demo-report.html', import.meta.url), renderReportHtml(report, { title: 'effigent demo — Agent Waste Report' }));
 writeFileSync(new URL('../demo-report.json', import.meta.url), JSON.stringify(report, null, 2));
 
 console.log(`Demo: ${report.totals.runs} runs, $${report.totals.costUsd} observed (~$${report.totals.estMonthlyCostUsd}/mo), ${Math.round(report.totals.clusteredRunRatio * 100)}% clustered`);

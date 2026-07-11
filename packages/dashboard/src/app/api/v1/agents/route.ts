@@ -7,7 +7,7 @@ import { authenticateKey, hashKey, hasOwnershipColumns } from '@/lib/agent-auth.
 export const dynamic = 'force-dynamic';
 
 /**
- * POST — CLI agent registration (`ccopt agent add`): Bearer tenant key →
+ * POST — CLI agent registration (`effigent agent add`): Bearer tenant key →
  * upsert the agent and mint a member key scoped to it. Plaintext returned once.
  */
 export async function POST(req: Request) {

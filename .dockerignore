@@ -5,6 +5,6 @@ dist
 data
 .git
 *.log
-ccopt-report.*
+effigent-report.*
 demo-report.*
-ccopt-mvp-spec.md
+effigent-mvp-spec.md

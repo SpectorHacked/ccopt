@@ -1,5 +1,5 @@
 /**
- * Core domain types for ccopt — spec §3 (graph engine).
+ * Core domain types for effigent — spec §3 (graph engine).
  */
 
 export type StepKind = 'model_turn' | 'tool_use' | 'tool_result' | 'thinking';
@@ -45,7 +45,7 @@ export interface TokenUsage {
 /** A parsed run (one session / one headless invocation). */
 export interface Run {
   runId: string;
-  /** Logical agent identity — project dir by default, or explicit tag from `ccopt run`. */
+  /** Logical agent identity — project dir by default, or explicit tag from `effigent run`. */
   agentId: string;
   cwd?: string;
   gitBranch?: string;

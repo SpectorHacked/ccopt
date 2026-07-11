@@ -15,7 +15,7 @@ import {
   type MinedSegment,
   type RunGraph,
   type StepClass,
-} from '@ccopt/core';
+} from '@effigent/core';
 
 function esc(s: unknown): string {
   return String(s ?? '')
@@ -170,7 +170,7 @@ export function renderGraphPage(
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>run ${esc(graph.runId.slice(0, 8))} — ccopt</title>
+<title>run ${esc(graph.runId.slice(0, 8))} — effigent</title>
 <style>
   :root {
     --surface: #fcfcfb; --card: #ffffff; --line: #e7e6e3;

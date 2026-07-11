@@ -7,16 +7,16 @@ export interface Config {
 }
 
 export function loadConfig(): Config {
-  const adminToken = process.env.CCOPT_ADMIN_TOKEN;
+  const adminToken = process.env.EFFIGENT_ADMIN_TOKEN;
   if (!adminToken) {
-    throw new Error('CCOPT_ADMIN_TOKEN must be set (used to create tenants/API keys).');
+    throw new Error('EFFIGENT_ADMIN_TOKEN must be set (used to create tenants/API keys).');
   }
   return {
     port: Number(process.env.PORT ?? 8787),
     databaseUrl:
-      process.env.DATABASE_URL ?? 'postgres://ccopt:ccopt@localhost:5433/ccopt',
-    dataDir: process.env.CCOPT_DATA_DIR ?? './data',
+      process.env.DATABASE_URL ?? 'postgres://effigent:effigent@localhost:5433/effigent',
+    dataDir: process.env.EFFIGENT_DATA_DIR ?? './data',
     adminToken,
-    publicBaseUrl: process.env.CCOPT_PUBLIC_BASE_URL ?? `http://localhost:${process.env.PORT ?? 8787}`,
+    publicBaseUrl: process.env.EFFIGENT_PUBLIC_BASE_URL ?? `http://localhost:${process.env.PORT ?? 8787}`,
   };
 }

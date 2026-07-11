@@ -1,8 +1,8 @@
 {
-  "name": "ccopt",
+  "name": "effigent",
   "private": true,
   "version": "0.1.0",
-  "description": "ccopt \u2014 The Agent Waste Report. Graph-based determinism detection for AI agents.",
+  "description": "Effigent \u2014 the compiler for AI agents. Graph-based determinism detection that compiles repetitive LLM reasoning into deterministic code.",
   "workspaces": [
     "packages/*"
   ],
@@ -10,8 +10,8 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "dev:server": "npm run dev -w @ccopt/server",
-    "bundle": "npm run build -w @ccopt/core -w @ccopt/cli && esbuild packages/cli/src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/ccopt.cjs"
+    "dev:server": "npm run dev -w @effigent/server",
+    "bundle": "npm run build -w @effigent/core -w @effigent/cli && esbuild packages/cli/src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/effigent.cjs"
   },
   "engines": {
     "node": ">=20"

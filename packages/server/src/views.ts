@@ -4,7 +4,7 @@
  * Auth for browsers: ?key=cck_… query param (same tenant API key as the CLI).
  */
 
-import { CLASS_STYLE, classifyStep, runGraphSvg, toolProfile, type MinedSegment, type Run, type RunGraph, type StepClass, type VolatileSlot } from '@ccopt/core';
+import { CLASS_STYLE, classifyStep, runGraphSvg, toolProfile, type MinedSegment, type Run, type RunGraph, type StepClass, type VolatileSlot } from '@effigent/core';
 
 /** HTML-escape any value — pg returns Dates for timestamptz, numerics as strings. */
 function esc(v: unknown): string {
@@ -186,8 +186,8 @@ ${aiInsights.insights
     : `<h2>AI cost analysis</h2><p style="font-size:13px;color:#66666e">Not generated yet — <code>curl -X POST &lt;server&gt;/api/v1/insights -H 'authorization: Bearer &lt;key&gt;'</code></p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ccopt — ${esc(tenantName)}</title><style>${SHELL_CSS}</style></head><body><div class="wrap">
-<h1>ccopt workspace: ${esc(tenantName)}</h1>
+<title>Effigent — ${esc(tenantName)}</title><style>${SHELL_CSS}</style></head><body><div class="wrap">
+<h1>Effigent workspace: ${esc(tenantName)}</h1>
 <div class="sub">agents, sessions, and reports in this tenant${optimize?.agentFilter ? ` · filtered to <code>${esc(optimize.agentFilter)}</code> · <a href="/ui?key=${k}">clear filter</a>` : ''}</div>
 ${optimizeHtml}
 
@@ -282,7 +282,7 @@ export function renderSessionHtml(
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ccopt session ${esc(run.runId.slice(0, 8))}</title><style>${SESSION_CSS}</style></head><body><div class="wrap">
+<title>Effigent session ${esc(run.runId.slice(0, 8))}</title><style>${SESSION_CSS}</style></head><body><div class="wrap">
 <h1>Session <code>${esc(run.runId)}</code></h1>
 <div class="sub">agent <code>${esc(run.agentId)}</code> · ${esc(run.startedAt ?? '')} · ${run.steps.length} steps · ${usd(run.costUsd)} · ${esc(models)}
  · <a href="/ui?key=${encodeURIComponent(key)}">← dashboard</a></div>

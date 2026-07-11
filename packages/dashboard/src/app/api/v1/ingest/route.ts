@@ -22,20 +22,26 @@ interface RunLike {
  * Transcript ingest (Claude Code SessionEnd hook / `effigent run` / `effigent sync`).
  * Bearer key; session id via header. Two body shapes:
  *  - gzipped (or plain) JSONL transcript (default)
- *  - `x-ccopt-format: run` + JSON — a Run the CLI pre-parsed locally, used when
+ *  - `x-effigent-format: run` + JSON — a Run the CLI pre-parsed locally, used when
  *    the transcript exceeds the platform body cap (~4.5 MB). Same persist path,
  *    same redaction; the scoped key still forces attribution.
+ *
+ * Headers are `x-effigent-*`; the legacy `x-ccopt-*` names are still read as a
+ * fallback so CLIs published before the rename keep uploading. Remove once no
+ * pre-rename CLI is in the wild.
  */
 export async function POST(req: Request) {
   const auth = await authenticateKey(req.headers.get('authorization'));
   if (!auth) return Response.json({ error: 'invalid API key' }, { status: 401 });
 
-  const sessionId = req.headers.get('x-ccopt-session-id') ?? '';
-  if (!sessionId) return Response.json({ error: 'x-ccopt-session-id header required' }, { status: 400 });
-  const agentIdHeader = req.headers.get('x-ccopt-agent-id') ?? undefined;
+  const sessionId =
+    req.headers.get('x-effigent-session-id') ?? req.headers.get('x-ccopt-session-id') ?? '';
+  if (!sessionId) return Response.json({ error: 'x-effigent-session-id header required' }, { status: 400 });
+  const agentIdHeader =
+    req.headers.get('x-effigent-agent-id') ?? req.headers.get('x-ccopt-agent-id') ?? undefined;
 
   // Pre-parsed Run path (large sessions).
-  if (req.headers.get('x-ccopt-format') === 'run') {
+  if ((req.headers.get('x-effigent-format') ?? req.headers.get('x-ccopt-format')) === 'run') {
     let run: RunLike;
     try {
       run = (await req.json()) as RunLike;

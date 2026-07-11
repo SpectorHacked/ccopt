@@ -3,7 +3,7 @@ import { pool } from '@/lib/db.ts';
 
 export const dynamic = 'force-dynamic';
 
-/** Key-validation endpoint (`ccopt login` probes it) + report metadata list. */
+/** Key-validation endpoint (`effigent login` probes it) + report metadata list. */
 export async function GET(req: Request) {
   const auth = await authenticateKey(req.headers.get('authorization'));
   if (!auth) return Response.json({ error: 'invalid API key' }, { status: 401 });

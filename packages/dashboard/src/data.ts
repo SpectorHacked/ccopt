@@ -1,7 +1,7 @@
 /**
  * Demo dataset — mirrors the product mock so the SPA renders fully standalone
  * (e.g. on S3/CloudFront before login). Live values (cost, agent inventory)
- * come from the ccopt API in `api.ts`; the rest are Phase 2/3 signals shown
+ * come from the effigent API in `api.ts`; the rest are Phase 2/3 signals shown
  * here as the target design. Swap fields for API data as engines land.
  */
 
