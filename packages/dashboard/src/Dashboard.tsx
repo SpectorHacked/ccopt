@@ -11,6 +11,7 @@ import { Install } from '@/components/Install.tsx';
 import { Sessions } from '@/components/Sessions.tsx';
 import { SessionDetail } from '@/components/SessionDetail.tsx';
 import { ToolSynthesis } from '@/components/ToolSynthesis.tsx';
+import { ToolSynthesisLive } from '@/components/ToolSynthesisLive.tsx';
 import { KnowledgeGraph } from '@/components/KnowledgeGraph.tsx';
 import { KnowledgeLive } from '@/components/KnowledgeLive.tsx';
 import { Insights } from '@/components/Insights.tsx';
@@ -80,7 +81,7 @@ export function Dashboard() {
     privacy: { title: 'Privacy & Redaction', sub: 'What never leaves raw — built-in filters plus your workspace rules' },
   };
   const head = heads[view] ?? heads.overview;
-  const showToolbar = view === 'overview' || view === 'sessions' || view === 'kg' || view === 'insights';
+  const showToolbar = view === 'overview' || view === 'sessions' || view === 'kg' || view === 'insights' || view === 'tools';
 
   return (
     <div className="app">
@@ -143,9 +144,7 @@ export function Dashboard() {
               {view === 'session-detail' && session && (
                 <SessionDetail sessionId={session.id} optimized={session.optimized} onBack={() => setView('sessions')} />
               )}
-              {view === 'tools' && (demo ? <ToolSynthesis /> : (
-                <div className="dag-empty">No synthesized tools yet — they appear once Effigent compiles deterministic steps for your agents. Check <b>Insights</b> for the current candidates.</div>
-              ))}
+              {view === 'tools' && (demo ? <ToolSynthesis /> : <ToolSynthesisLive agent={agent} />)}
               {view === 'kg' && (demo ? <KnowledgeGraph agent={agent} /> : <KnowledgeLive agent={agent} />)}
               {view === 'insights' && <Insights agent={agent} />}
               {view === 'privacy' && <Privacy />}
