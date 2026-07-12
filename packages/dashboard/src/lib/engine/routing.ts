@@ -1,3 +1,4 @@
+// VENDORED from packages/core|server (dashboard can't take workspace deps on Vercel).
 /**
  * Model routing — validate that a cheaper model in the SAME provider family can
  * stand in for a step the agent runs on a bigger model, WITHOUT breaking it.
