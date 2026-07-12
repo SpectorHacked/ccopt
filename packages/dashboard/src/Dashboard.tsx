@@ -13,7 +13,7 @@ import { SessionDetail } from '@/components/SessionDetail.tsx';
 import { ToolSynthesis } from '@/components/ToolSynthesis.tsx';
 import { ToolSynthesisLive } from '@/components/ToolSynthesisLive.tsx';
 import { KnowledgeGraph } from '@/components/KnowledgeGraph.tsx';
-import { KnowledgeLive } from '@/components/KnowledgeLive.tsx';
+import { KnowledgeView } from '@/components/KnowledgeView.tsx';
 import { Insights } from '@/components/Insights.tsx';
 import { OverviewLive } from '@/components/OverviewLive.tsx';
 import { Privacy } from '@/components/Privacy.tsx';
@@ -145,7 +145,7 @@ export function Dashboard() {
                 <SessionDetail sessionId={session.id} optimized={session.optimized} onBack={() => setView('sessions')} />
               )}
               {view === 'tools' && (demo ? <ToolSynthesis /> : <ToolSynthesisLive agent={agent} />)}
-              {view === 'kg' && (demo ? <KnowledgeGraph agent={agent} /> : <KnowledgeLive agent={agent} />)}
+              {view === 'kg' && (demo ? <KnowledgeGraph agent={agent} /> : <KnowledgeView agent={agent} />)}
               {view === 'insights' && <Insights agent={agent} />}
               {view === 'privacy' && <Privacy />}
               {view === 'overview' && (demo ? (

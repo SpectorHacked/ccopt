@@ -565,6 +565,29 @@ details.install-manual > summary:hover { color: var(--txt); }
 .tool-legend b { color: var(--txt-2); font-weight: 650; }
 .tool-legend .ins-act { vertical-align: middle; margin-right: 2px; }
 
+/* Knowledge graph explorer */
+.kg-toggle { display: inline-flex; gap: 2px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 9px; padding: 3px; align-self: flex-start; }
+.kg-toggle button { border: none; background: none; color: var(--txt-3); font-size: 12.5px; font-weight: 600;
+  padding: 5px 14px; border-radius: 6px; cursor: pointer; }
+.kg-toggle button.active { background: var(--panel); color: var(--txt); }
+.kg-explorer-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.kg-agent-select { background: var(--panel-2); color: var(--txt); border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; font-size: 12.5px; }
+.kg-canvas { position: relative; height: 70vh; min-height: 460px; border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; background: var(--panel); }
+.kg-detail { position: absolute; top: 12px; right: 12px; width: 320px; max-width: calc(100% - 24px);
+  max-height: calc(100% - 24px); overflow: auto; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.5); z-index: 5; }
+.kg-detail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.kg-detail-x { background: none; border: none; color: var(--txt-3); font-size: 20px; line-height: 1; cursor: pointer; }
+.kg-detail-val { margin-top: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px; font-family: var(--mono); font-size: 11px; color: var(--txt-2); white-space: pre-wrap;
+  word-break: break-word; max-height: 280px; overflow: auto; }
+/* reactflow dark-theme fit */
+.react-flow__controls-button { background: var(--panel-2) !important; border-color: var(--border) !important; fill: var(--txt) !important; }
+.react-flow__controls-button:hover { background: var(--panel) !important; }
+.react-flow__attribution { display: none; }
+
 /* ================= light theme =================
    Toggled via data-theme on <html>; tokens only, components untouched. */
 :root[data-theme='light'] {
