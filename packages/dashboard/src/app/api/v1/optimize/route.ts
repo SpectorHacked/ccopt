@@ -97,63 +97,84 @@ export async function GET(req: Request) {
     );
   }
 
-  const graphs = runs.map(buildRunGraph);
-  const analyses = analyzeDeterminism(graphs);
-  const drift = detectDrift(graphs);
-
-  const tools = synthesizeTools(analyses).map((spec) => {
-    const analysis = analyses.find((a) => a.l1 === spec.clusterKey);
-    const replay = analysis ? replayToolSpec(spec, analysis) : undefined;
-    return { ...spec, replay };
-  });
-
-  // Persist the synthesized set (source of truth for the dashboard's per-tool
-  // switches) WITHOUT touching `enabled` — the owner's disables survive every
-  // regeneration and drop those tools from the bundle. Table-guarded until
-  // migration 011 runs.
-  let disabled = new Set<string>();
+  // The engine pipeline is the untested-on-real-data path. A single malformed
+  // run must never take the whole endpoint down (a bare 500 breaks `effigent
+  // optimize` and the SessionStart auto-injection). Contain any throw, log it
+  // for diagnosis, and degrade to an empty bundle — the CLI's refresh is
+  // fail-open by design, so the agent keeps working.
   try {
-    for (const t of tools) {
-      await pool.query(
-        `insert into agent_tools (tenant_id, agent_id, tool_id, name, status, spec)
-         values ($1,$2,$3,$4,$5,$6)
-         on conflict (tenant_id, agent_id, tool_id) do update
-           set name = excluded.name, status = excluded.status, spec = excluded.spec, updated_at = now()`,
-        [auth.tenantId, agentId, t.id, t.name, t.replay?.status ?? 'shadow', JSON.stringify(t)],
-      );
-    }
-    const off = await pool.query<{ tool_id: string }>(
-      `select tool_id from agent_tools where tenant_id=$1 and agent_id=$2 and enabled=false`,
-      [auth.tenantId, agentId],
-    );
-    disabled = new Set(off.rows.map((r) => r.tool_id));
-  } catch {
-    /* agent_tools not migrated yet — no per-tool switches */
-  }
-  const activeTools = tools.filter((t) => !disabled.has(t.id));
-  const ready = activeTools.filter((t) => t.replay?.status === 'ready');
-  const knowledge = buildKnowledgeGraph(analyses).find((k) => k.agentId === agentId) ?? null;
+    const graphs = runs.map(buildRunGraph);
+    const analyses = analyzeDeterminism(graphs);
+    const drift = detectDrift(graphs);
 
-  const activatable = ready.length > 0 || (knowledge?.worthIt ?? false);
-  if (url.searchParams.get('mark') === '1' && activatable) {
-    await pool
-      .query(
-        `update agents set optimized_at = now() where tenant_id = $1 and name = $2`,
+    const tools = synthesizeTools(analyses).map((spec) => {
+      const analysis = analyses.find((a) => a.l1 === spec.clusterKey);
+      const replay = analysis ? replayToolSpec(spec, analysis) : undefined;
+      return { ...spec, replay };
+    });
+
+    // Persist the synthesized set (source of truth for the dashboard's per-tool
+    // switches) WITHOUT touching `enabled` — the owner's disables survive every
+    // regeneration and drop those tools from the bundle. Table-guarded until
+    // migration 011 runs.
+    let disabled = new Set<string>();
+    try {
+      for (const t of tools) {
+        await pool.query(
+          `insert into agent_tools (tenant_id, agent_id, tool_id, name, status, spec)
+           values ($1,$2,$3,$4,$5,$6)
+           on conflict (tenant_id, agent_id, tool_id) do update
+             set name = excluded.name, status = excluded.status, spec = excluded.spec, updated_at = now()`,
+          [auth.tenantId, agentId, t.id, t.name, t.replay?.status ?? 'shadow', JSON.stringify(t)],
+        );
+      }
+      const off = await pool.query<{ tool_id: string }>(
+        `select tool_id from agent_tools where tenant_id=$1 and agent_id=$2 and enabled=false`,
         [auth.tenantId, agentId],
-      )
-      .catch(() => {/* agents row may not exist for unregistered ids */});
-  }
+      );
+      disabled = new Set(off.rows.map((r) => r.tool_id));
+    } catch {
+      /* agent_tools not migrated yet — no per-tool switches */
+    }
+    const activeTools = tools.filter((t) => !disabled.has(t.id));
+    const ready = activeTools.filter((t) => t.replay?.status === 'ready');
+    const knowledge = buildKnowledgeGraph(analyses).find((k) => k.agentId === agentId) ?? null;
 
-  return Response.json({
-    agentId,
-    window: WINDOW,
-    runCount: runs.length,
-    generatedAt: new Date().toISOString(),
-    tools: activeTools,
-    readyTools: ready.length,
-    disabledTools: disabled.size,
-    knowledge,
-    drift: drift ? { changed: drift.changed, changedAt: drift.changedAt, z: drift.z } : null,
-    activatable,
-  });
+    const activatable = ready.length > 0 || (knowledge?.worthIt ?? false);
+    if (url.searchParams.get('mark') === '1' && activatable) {
+      await pool
+        .query(
+          `update agents set optimized_at = now() where tenant_id = $1 and name = $2`,
+          [auth.tenantId, agentId],
+        )
+        .catch(() => {/* agents row may not exist for unregistered ids */});
+    }
+
+    return Response.json({
+      agentId,
+      window: WINDOW,
+      runCount: runs.length,
+      generatedAt: new Date().toISOString(),
+      tools: activeTools,
+      readyTools: ready.length,
+      disabledTools: disabled.size,
+      knowledge,
+      drift: drift ? { changed: drift.changed, changedAt: drift.changedAt, z: drift.z } : null,
+      activatable,
+    });
+  } catch (err) {
+    console.error(
+      `[optimize] pipeline failed tenant=${auth.tenantId} agent=${agentId} runs=${runs.length}:`,
+      err,
+    );
+    return Response.json(
+      {
+        agentId, window: WINDOW, runCount: runs.length,
+        tools: [], readyTools: 0, disabledTools: 0, knowledge: null, drift: null,
+        activatable: false, degraded: true,
+        note: 'analysis temporarily unavailable — the run set could not be analyzed',
+      },
+      { status: 200 },
+    );
+  }
 }

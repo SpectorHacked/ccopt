@@ -106,8 +106,13 @@ export function Sessions({
               <div className="agent-card-stats">
                 <span><b className="tnum">{a.n_runs}</b> sessions</span>
                 <span><b className="tnum">{fmtCost(a.total_cost_usd)}</b> spent</span>
-                {a.added_by && <span title="who registered this agent">added by <b>{a.added_by}</b></span>}
               </div>
+              {a.added_by && (
+                <div className="agent-card-meta" title={`registered by ${a.added_by}`}>
+                  <span className="agent-card-meta-k">added by</span>
+                  <b>{a.added_by}</b>
+                </div>
+              )}
             </button>
           ))}
         </div>

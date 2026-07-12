@@ -493,8 +493,13 @@ details.install-manual > summary:hover { color: var(--txt); }
 .agent-card:hover { border-color: var(--accent-line); background: var(--panel); }
 .agent-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .agent-card-name { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-card-stats { display: flex; justify-content: space-between; gap: 8px; color: var(--txt-3); font-size: 12px; }
+.agent-card-stats { display: flex; gap: 18px; color: var(--txt-3); font-size: 12px; }
 .agent-card-stats b { color: var(--txt); font-weight: 700; }
+.agent-card-meta { display: flex; align-items: baseline; gap: 5px; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--txt-3); }
+.agent-card-meta-k { flex: none; }
+.agent-card-meta b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--txt-2); font-weight: 600; }
 
 .sess-search { display: flex; align-items: center; gap: 9px; background: var(--panel); border: 1px solid var(--border);
   border-radius: 10px; padding: 0 12px; height: 42px; }

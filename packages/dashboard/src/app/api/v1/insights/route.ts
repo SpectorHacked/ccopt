@@ -151,6 +151,8 @@ export async function GET(req: Request) {
 
   const insights = [];
   for (const [agentId, runs] of runsByAgent) {
+    // One malformed agent's run set must not 500 the whole Insights view.
+    try {
     const graphs = runs.map(buildRunGraph);
 
     // "Has this agent changed?" — embedding drift of the newest runs vs the
@@ -254,6 +256,12 @@ export async function GET(req: Request) {
       drift,
       knowledge: buildKnowledgeGraph(analyses).find((k) => k.agentId === agentId) ?? null,
     });
+    } catch (err) {
+      console.error(
+        `[insights] agent analysis failed tenant=${tenantId} agent=${agentId} runs=${runs.length}:`,
+        err,
+      );
+    }
   }
   insights.sort((a, b) => b.totalEstUsd - a.totalEstUsd);
   return Response.json({ insights, window });

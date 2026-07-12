@@ -6,7 +6,7 @@
 
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { parseTranscript, type Run } from '@effigent/core';
 
 export const EFFIGENT_HOME = join(homedir(), '.effigent');
@@ -88,11 +88,44 @@ export function sniffCwd(path: string, maxBytes = 65536): string | undefined {
   return undefined;
 }
 
-/** Resolve a session's agentId without a full parse: explicit tag > cwd rule. */
+/**
+ * The git repository a cwd belongs to, named by its top-level directory —
+ * a project's stable, collision-resistant identity. Walks up to the first
+ * `.git`. Returns undefined outside any repo (stray/home/temp dirs stay
+ * unattributed, so they never upload under the privacy default).
+ *
+ * This is a far better default agent id than the cwd's leaf segment: two
+ * unrelated projects that happen to share a folder name (`web`, `app`, or two
+ * clones) no longer collapse into one agent. A monorepo holding several agents
+ * is the one case this can't split on its own — use `agentRules` there.
+ */
+export function gitRepoName(cwd: string | undefined): string | undefined {
+  if (!cwd) return undefined;
+  let dir = cwd;
+  for (let i = 0; i < 64; i++) {
+    try {
+      if (existsSync(join(dir, '.git'))) return basename(dir) || undefined;
+    } catch {
+      /* unreadable — keep walking up */
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break; // filesystem root
+    dir = parent;
+  }
+  return undefined;
+}
+
+/**
+ * Resolve a session's agentId without a full parse. Precedence:
+ *   explicit tag (`effigent run`/`tag`)  >  cwd `agentRule`  >  git repo name.
+ * The git-repo default means each project becomes its own agent automatically —
+ * distinct agents no longer merge just because attribution wasn't configured.
+ */
 export function resolveAgentId(sessionId: string, path: string): string | undefined {
   const map = loadAgentMap();
   if (map[sessionId]) return map[sessionId];
-  return agentFromRules(sniffCwd(path), loadConfig().agentRules);
+  const cwd = sniffCwd(path);
+  return agentFromRules(cwd, loadConfig().agentRules) ?? gitRepoName(cwd);
 }
 
 export function loadAgentMap(): Record<string, string> {
@@ -178,10 +211,12 @@ export function loadRuns(sourceDirs: string | string[], options: LoadOptions = {
     } catch {
       continue;
     }
+    const cwd = sniffCwd(session.path);
     const run = parseTranscript(jsonl, {
       agentId:
         agentMap[session.sessionId] ??
-        agentFromRules(sniffCwd(session.path), config.agentRules),
+        agentFromRules(cwd, config.agentRules) ??
+        gitRepoName(cwd),
     });
     if (!run) continue;
     if (options.minSteps !== undefined && run.steps.length < options.minSteps) continue;
