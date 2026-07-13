@@ -32,12 +32,12 @@ lands before the workspace is deliberately provisioned.
      ```
      Creates `effigent-runs-<id>` (block-public-access + default encryption) and
      records it on the tenant.
-   - **BYO bucket (partner's own AWS account):** the partner creates a bucket and
-     an IAM role trusting Effigent's account with a shared **external id**,
-     granting `s3:PutObject/GetObject`. An org admin then saves it under the
-     dashboard **Storage** settings (or `PUT /api/v1/storage` with
-     `{ bucket, region, roleArn, externalId, prefix?, kmsKey? }`). The PUT runs a
-     write→read probe and only reports success if access works.
+   - **BYO bucket (partner's own AWS account):** hand the partner
+     **`docs/byo-s3-setup.md`** — it walks their cloud team through the bucket +
+     cross-account role (trust + permissions JSON, external id). They return
+     bucket/region/roleArn/externalId (+ kmsKey if used); an org admin saves it
+     under the dashboard **Storage** settings (or `PUT /api/v1/storage`). The PUT
+     runs a write→read probe and only reports success if access works.
 3. **Issue a capture key:** in the dashboard **Keys** view, mint a scoped `eff_`
    key for the partner's agent (shown once). Prefer a per-agent scoped key over
    the tenant owner key.
