@@ -32,7 +32,13 @@ import {
 import { uploadSessionFile } from './upload.js';
 
 const program = new Command();
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
+// Tool INJECTION (installing skills/bundles/AGENTS.md sections and the
+// auto-refresh SessionStart hook) is OFF for the insights-only POC — Effigent
+// captures runs and surfaces analysis in the dashboard, but never modifies how
+// an agent behaves. Set EFFIGENT_ENABLE_INJECTION=1 to re-enable. Capture
+// (upload) and read-only insights are always on regardless.
+const INJECTION_ENABLED = process.env.EFFIGENT_ENABLE_INJECTION === '1';
 program.name('effigent').description('Effigent — the Optimizer CLI: capture agent runs, compile away the waste').version(VERSION);
 
 /** Hosted collector — a dedicated subdomain so the ingestion backend can move to
@@ -736,15 +742,22 @@ installCmd
     const addedEnd = addHook('SessionEnd', `${bin} claude-hook --agent ${opts.agent}`, `claude-hook --agent ${opts.agent}`);
     // Auto-injection: every session start refreshes the optimization bundle +
     // skill (throttled + fail-open inside claude-refresh — never blocks work).
-    const addedStart = addHook('SessionStart', `${bin} claude-refresh --agent ${opts.agent}`, `claude-refresh --agent ${opts.agent}`);
+    // OFF by default (insights-only POC) — capture must never also inject.
+    const addedStart = INJECTION_ENABLED
+      ? addHook('SessionStart', `${bin} claude-refresh --agent ${opts.agent}`, `claude-refresh --agent ${opts.agent}`)
+      : false;
     if (!addedEnd && !addedStart) {
       console.log(`✓ hooks for '${opts.agent}' already present in ${settingsPath}`);
       return;
     }
     mkdirSync(dirname(settingsPath), { recursive: true });
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-    console.log(`✓ installed hooks for '${opts.agent}' in ${settingsPath}`);
-    console.log('  SessionEnd → uploads each finished session · SessionStart → keeps the optimization bundle fresh (auto-injection).');
+    console.log(`✓ installed capture hook for '${opts.agent}' in ${settingsPath}`);
+    console.log(
+      INJECTION_ENABLED
+        ? '  SessionEnd → uploads each finished session · SessionStart → keeps the optimization bundle fresh (auto-injection).'
+        : '  SessionEnd → uploads each finished session. Capture only — no changes to how the agent runs.',
+    );
   });
 
 program
@@ -752,6 +765,9 @@ program
   .description('(internal) Claude Code SessionStart hook — refreshes the optimization bundle + skill; throttled and fail-open')
   .requiredOption('--agent <name>', 'registered agent name')
   .action(async (opts) => {
+    // Injection disabled (insights-only POC): the SessionStart hook is not
+    // installed, but no-op defensively in case an old hook lingers.
+    if (!INJECTION_ENABLED) return;
     try {
       const bundleDir = join(EFFIGENT_HOME, 'bundles', slugify(opts.agent));
       const bundlePath = join(bundleDir, 'bundle.json');
@@ -1019,6 +1035,14 @@ program
   .option('--codex [dir]', 'also inject into Codex: maintain a managed Effigent section in <dir>/AGENTS.md (default: cwd)')
   .option('--no-mark', 'do not stamp the agent as optimized')
   .action(async (agentName: string, opts) => {
+    if (!INJECTION_ENABLED) {
+      console.log(
+        `Tool injection is off (insights-only mode). Effigent is capturing '${agentName}' and its\n` +
+          'optimization opportunities are shown read-only in the dashboard → Insights.\n' +
+          '(Injecting compiled tools into the agent is disabled for now; set EFFIGENT_ENABLE_INJECTION=1 to opt in.)',
+      );
+      return;
+    }
     const config = loadConfig();
     const server: string | undefined = opts.server ?? process.env.EFFIGENT_SERVER ?? config.server ?? DEFAULT_SERVER;
     const apiKey: string | undefined =

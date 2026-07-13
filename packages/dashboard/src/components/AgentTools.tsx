@@ -15,6 +15,11 @@ interface InjectedTool {
 
 const usd = (n: number) => `$${n.toFixed(4)}`;
 
+// Injection is off for the insights-only POC — there are no "injected tools",
+// so this control panel is hidden. Insights/Tool Synthesis still show the
+// analysis read-only. Set NEXT_PUBLIC_ENABLE_INJECTION=1 to re-enable.
+const INJECTION_ENABLED = process.env.NEXT_PUBLIC_ENABLE_INJECTION === '1';
+
 /** What Effigent injects into this agent — with the owner's per-tool switch.
  *  Disabling drops the tool from the next bundle refresh (session start /
  *  `effigent optimize`). */
@@ -24,6 +29,7 @@ export function AgentTools({ agent }: { agent: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!INJECTION_ENABLED) return;
     setLoading(true);
     fetch(`/api/v1/agent-tools?agent=${encodeURIComponent(agent)}`)
       .then((r) => (r.ok ? r.json() : { tools: [] }))
@@ -46,6 +52,7 @@ export function AgentTools({ agent }: { agent: string }) {
     });
   };
 
+  if (!INJECTION_ENABLED) return null; // insights-only POC — no injected-tools panel
   if (loading || (!migrated && tools.length === 0)) return null;
   if (tools.length === 0) return null;
 

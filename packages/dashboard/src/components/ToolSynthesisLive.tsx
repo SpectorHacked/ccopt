@@ -21,6 +21,10 @@ type Row = SynthTool & { agentId: string };
 
 const usd = (n: number) => `$${n.toFixed(4)}`;
 
+// Insights-only POC: these are compiled *candidates*, not active injections.
+// Set NEXT_PUBLIC_ENABLE_INJECTION=1 to restore the "injected/active" framing.
+const INJECTION_ENABLED = process.env.NEXT_PUBLIC_ENABLE_INJECTION === '1';
+
 /**
  * Real synthesized tools for the workspace, from the live determinism engine
  * (`/api/v1/insights` → `tools[]`). Read-only catalog across agents; per-agent
@@ -96,8 +100,9 @@ export function ToolSynthesisLive({ agent }: { agent: string }) {
           <div>
             <div className="mono-name" style={{ fontSize: 14 }}>Synthesized tools</div>
             <div className="panel-sub">
-              Deterministic procedures compiled from repeated steps. Enable/disable per agent in
-              Sessions → an agent.
+              {INJECTION_ENABLED
+                ? 'Deterministic procedures compiled from repeated steps. Enable/disable per agent in Sessions → an agent.'
+                : 'Deterministic procedures the engine could compile from repeated steps — read-only. Shown for insight; not injected into the agent.'}
             </div>
           </div>
         </div>
@@ -167,7 +172,9 @@ export function ToolSynthesisLive({ agent }: { agent: string }) {
             </div>
           )}
           <div><b>replay</b> = share of recorded runs the compiled tool reproduces exactly · <b>saved / run</b> = measured LLM cost removed per run · <b>in runs</b> = share of this agent’s runs containing the procedure.</div>
-          <div><span className="ins-act act-replace">ready</span> replay-validated &amp; injected · <span className="ins-act act-route">shadow</span> still validating, not yet injected.</div>
+          <div>
+            <span className="ins-act act-replace">ready</span> {INJECTION_ENABLED ? 'replay-validated & injected' : 'replay-validated (would be injected when injection is enabled)'} · <span className="ins-act act-route">shadow</span> still validating.
+          </div>
         </div>
       </section>
     </div>

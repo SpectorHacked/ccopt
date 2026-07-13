@@ -21,6 +21,11 @@ export const maxDuration = 60;
 
 const WINDOW = 20;
 
+// Tool injection is off for the insights-only POC: we still compute and return
+// the analysis, but we do NOT stamp agents.optimized_at (the "Optimized" badge
+// implies an active injection). Set EFFIGENT_ENABLE_INJECTION=1 to re-enable.
+const INJECTION_ENABLED = process.env.EFFIGENT_ENABLE_INJECTION === '1';
+
 interface DbStep {
   kind: RawStep['kind'];
   name: string;
@@ -152,7 +157,7 @@ export async function GET(req: Request) {
     const slimContext = knowledge?.worthIt ? renderSlimContext(knowledge) : null;
 
     const activatable = ready.length > 0 || (knowledge?.worthIt ?? false);
-    if (url.searchParams.get('mark') === '1' && activatable) {
+    if (INJECTION_ENABLED && url.searchParams.get('mark') === '1' && activatable) {
       await pool
         .query(
           `update agents set optimized_at = now() where tenant_id = $1 and name = $2`,

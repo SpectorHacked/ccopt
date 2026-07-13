@@ -156,6 +156,12 @@ Reads Neon directly via a pooled `pg` client (`lib/db.ts`).
   Consumed by `effigent optimize <agent>`, which writes `~/.effigent/bundles/<agent>/`
   and installs a generated Claude Code skill (facts + recipes + runnable scripts for
   fully-constant read-only bash units) under `~/.claude/skills/effigent-<agent>/`.
+  **POC: tool INJECTION is OFF by default** (`EFFIGENT_ENABLE_INJECTION=1` to
+  re-enable; dashboard UI uses `NEXT_PUBLIC_ENABLE_INJECTION`). When off:
+  `install claude` wires only the SessionEnd upload hook (no SessionStart
+  auto-inject), `effigent optimize` is insights-only (writes nothing), the server
+  does not stamp `optimized_at`, and the "Injected tools" control is hidden.
+  Capture + read-only insights (Insights, Tool Synthesis) are always on.
 - `GET /api/v1/sessions[?agent=]` — the tenant's runs, newest first.
 - `GET /api/v1/sessions/[id]` — one run (with `parsed`) for the DAG deep-dive.
 - `GET /api/v1/insights[?agent=&window=]` — **the determinism brain (v3)**: a thin
