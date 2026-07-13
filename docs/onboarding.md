@@ -15,9 +15,17 @@ lands before the workspace is deliberately provisioned.
      owner-run script below).
    - `kms:GenerateDataKey`, `kms:Decrypt` on the CMK (if used)
    - `sts:AssumeRole` on partner BYO role ARNs (for the BYO path)
+   The dashboard IAM also needs `s3:CreateBucket`, `s3:PutPublicAccessBlock`,
+   `s3:PutBucketEncryption` for auto-provisioning, and `kms:GenerateDataKey`/
+   `kms:Decrypt` on the CMK.
 3. **Vercel env** (dashboard project): `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
-   `AWS_SECRET_ACCESS_KEY` (or Vercel OIDC), and `EFFIGENT_S3_KMS_KEY` (if used).
-4. **Schema:** once, `PROD_DATABASE_URL=… node scripts/apply-org-storage.mjs`.
+   `AWS_SECRET_ACCESS_KEY` (or Vercel OIDC), `EFFIGENT_S3_KMS_KEY` (the run-data
+   CMK ARN), `EFFIGENT_S3_BUCKET_PREFIX` (optional), and
+   `CLERK_WEBHOOK_SIGNING_SECRET` (for the org.created webhook).
+4. **Clerk webhook:** add an `organization.created` webhook pointing at
+   `https://<dashboard>/api/v1/webhooks/clerk`; put its signing secret in the env
+   var above.
+5. **Schema:** once, `PROD_DATABASE_URL=… node scripts/apply-org-storage.mjs`.
 
 ## Per-partner onboarding
 
@@ -25,13 +33,15 @@ lands before the workspace is deliberately provisioned.
    partner and invite their users (Clerk owns invites/SSO). A Clerk org = an
    Effigent tenant; only that org's members can see its data.
 2. **Provision storage — pick one:**
-   - **Effigent-hosted bucket (default):** owner-run
+   - **Effigent-hosted bucket (default) — AUTOMATIC:** when the Clerk org is
+     created, the `organization.created` webhook (`/api/v1/webhooks/clerk`)
+     provisions `effigent-runs-<id>` (block-public-access + SSE-KMS with the
+     Effigent CMK) and records it on the tenant. Nothing to run per org.
+     Manual fallback (re-provision / pre-webhook orgs):
      ```
      AWS_REGION=us-east-1 PROD_DATABASE_URL=… \
        node scripts/provision-org-bucket.mjs --ref <clerk_org_id> [--kms <cmk-arn>]
      ```
-     Creates `effigent-runs-<id>` (block-public-access + default encryption) and
-     records it on the tenant.
    - **BYO bucket (partner's own AWS account):** hand the partner
      **`docs/byo-s3-setup.md`** — it walks their cloud team through the bucket +
      cross-account role (trust + permissions JSON, external id). They return

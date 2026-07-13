@@ -9,6 +9,7 @@ const isPublic = createRouteMatcher([
   '/api/v1/ingest',
   '/v1/traces',
   '/v1/logs', // OTLP logs (Codex token usage) — Bearer keys inside the handler
+  '/api/v1/webhooks/clerk', // Clerk org.created → provision bucket; Svix-signature auth
   '/api/v1/agents', // GET uses Clerk auth() internally; POST uses Bearer keys
   '/api/v1/reports',
   '/api/v1/optimize', // CLI activation bundle — Bearer keys inside the handler

@@ -1,5 +1,9 @@
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client, PutObjectCommand, GetObjectCommand,
+  CreateBucketCommand, PutPublicAccessBlockCommand, PutBucketEncryptionCommand,
+  BucketAlreadyOwnedByYou, type BucketLocationConstraint,
+} from '@aws-sdk/client-s3';
 import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
 import { pool } from './db.ts';
 import type { Run } from './engine/types.ts';
@@ -105,6 +109,73 @@ async function resolveStorage(tenantId: string): Promise<Resolved> {
 /** Invalidate a tenant's cached client (call after its storage config changes). */
 export function invalidateStorage(tenantId: string): void {
   cache.delete(tenantId);
+}
+
+/**
+ * Create a dedicated Effigent-account bucket for a new org and record it on the
+ * tenant (one bucket per org). Called from the Clerk `organization.created`
+ * webhook. Idempotent — skips if already provisioned or the bucket already
+ * exists. No-ops cleanly (returns false) when AWS isn't configured yet, so a
+ * pre-configuration deploy never errors. Effigent-owned buckets only; BYO
+ * buckets are configured by the org via PUT /api/v1/storage instead.
+ */
+export async function provisionOrgBucket(tenantId: string): Promise<boolean> {
+  const region = process.env.AWS_REGION;
+  if (!region) return false; // AWS not wired up yet — nothing to do
+
+  const { rows } = await pool.query<{ storage_bucket: string | null }>(
+    'select storage_bucket from tenants where id = $1',
+    [tenantId],
+  );
+  if (!rows.length) return false;
+  if (rows[0].storage_bucket) return true; // already provisioned (incl. BYO)
+
+  const prefix = process.env.EFFIGENT_S3_BUCKET_PREFIX || 'effigent-runs-';
+  const bucket = `${prefix}${tenantId.replace(/-/g, '').slice(0, 12)}`;
+  const s3 = new S3Client({ region });
+
+  try {
+    await s3.send(
+      new CreateBucketCommand({
+        Bucket: bucket,
+        ...(region !== 'us-east-1'
+          ? { CreateBucketConfiguration: { LocationConstraint: region as BucketLocationConstraint } }
+          : {}),
+      }),
+    );
+  } catch (err) {
+    if (!(err instanceof BucketAlreadyOwnedByYou)) throw err; // reuse ours; anything else is real
+  }
+  await s3.send(
+    new PutPublicAccessBlockCommand({
+      Bucket: bucket,
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true, IgnorePublicAcls: true, BlockPublicPolicy: true, RestrictPublicBuckets: true,
+      },
+    }),
+  );
+  await s3.send(
+    new PutBucketEncryptionCommand({
+      Bucket: bucket,
+      ServerSideEncryptionConfiguration: {
+        Rules: [
+          {
+            ApplyServerSideEncryptionByDefault: DEFAULT_KMS
+              ? { SSEAlgorithm: 'aws:kms', KMSMasterKeyID: DEFAULT_KMS }
+              : { SSEAlgorithm: 'AES256' },
+            BucketKeyEnabled: true,
+          },
+        ],
+      },
+    }),
+  );
+  await pool.query(
+    `update tenants set storage_bucket=$2, storage_region=$3, storage_kms_key=$4,
+            storage_provisioned_at=now() where id=$1 and storage_bucket is null`,
+    [tenantId, bucket, region, DEFAULT_KMS ?? null],
+  );
+  invalidateStorage(tenantId);
+  return true;
 }
 
 function fullKey(prefix: string, key: string): string {
