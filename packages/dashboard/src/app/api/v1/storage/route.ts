@@ -1,7 +1,31 @@
 import { auth } from '@clerk/nextjs/server';
 import { pool } from '@/lib/db.ts';
 import { resolveTenant } from '@/lib/tenant.ts';
-import { invalidateStorage, putRunBlob, getRunBlob } from '@/lib/storage.ts';
+import { invalidateStorage, putRunBlob, getRunBlob, provisionOrgBucket } from '@/lib/storage.ts';
+
+/** Classify a raw AWS error into an actionable hint. */
+function classifyAwsError(msg: string): string {
+  if (/NoSuchBucket|does not exist|NotFound/i.test(msg)) return 'bucket missing';
+  if (/kms|GenerateDataKey|Decrypt|KMSKeyId/i.test(msg)) return 'KMS denied — add ccopt-server as a key user on the CMK';
+  if (/CreateBucket|BucketAlreadyExists|BucketAlreadyOwned/i.test(msg)) return 'CreateBucket denied or name taken — check s3:CreateBucket on arn:aws:s3:::effigent-*';
+  if (/AccessDenied|Forbidden|not authorized/i.test(msg)) return 'S3 access denied — check the effigent-* IAM policy is attached to ccopt-server';
+  if (/credential|region|ResolveEndpoint|ENOTFOUND|Could not load cred/i.test(msg)) return 'AWS creds/region not configured in the dashboard env';
+  return 'unknown — see the raw error';
+}
+
+/** On-demand provisioning (org-admin) that surfaces the real reason on failure. */
+async function tryProvision(tenantId: string) {
+  if (!process.env.AWS_REGION) {
+    return { ok: false as const, reason: 'AWS_REGION not set in the dashboard deployment (env missing, or not redeployed after adding it)' };
+  }
+  try {
+    const done = await provisionOrgBucket(tenantId);
+    return done ? { ok: true as const } : { ok: false as const, reason: 'provisionOrgBucket returned false (already provisioned, or AWS_REGION missing)' };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    return { ok: false as const, hint: classifyAwsError(error), error };
+  }
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +84,15 @@ export async function GET(req: Request) {
   if (!(await migrated())) {
     return Response.json({ migrated: false, provisioned: false, canEdit: canEditOf(orgId, orgRole) });
   }
+  const sp = new URL(req.url).searchParams;
+
+  // ?provision=1 (org-admin) creates this org's bucket now and reports the exact
+  // reason if it can't — so you don't have to dig through webhook logs.
+  let provision: Awaited<ReturnType<typeof tryProvision>> | { skipped: string } | undefined;
+  if (sp.get('provision') === '1') {
+    provision = canEditOf(orgId, orgRole) ? await tryProvision(tenantId) : { skipped: 'org-admin only' };
+  }
+
   const { rows } = await pool.query(
     `select storage_bucket, storage_region, storage_prefix, storage_kms_key,
             storage_role_arn, storage_external_id, storage_provisioned_at
@@ -73,7 +106,7 @@ export async function GET(req: Request) {
   // ?probe=1 runs a real write→read (org-admin only) so you can confirm the
   // S3 + KMS wiring end-to-end from the browser instead of reading logs.
   let probe: Awaited<ReturnType<typeof probeStorage>> | { skipped: string } | undefined;
-  if (new URL(req.url).searchParams.get('probe') === '1') {
+  if (sp.get('probe') === '1') {
     if (!canEdit) probe = { skipped: 'org-admin only' };
     else if (!provisioned) probe = { skipped: 'no bucket configured yet' };
     else probe = await probeStorage(tenantId);
@@ -91,6 +124,7 @@ export async function GET(req: Request) {
     externalId: r.storage_external_id ?? null,
     provisionedAt: r.storage_provisioned_at ?? null,
     canEdit,
+    ...(provision ? { provision } : {}),
     ...(probe ? { probe } : {}),
   });
 }
