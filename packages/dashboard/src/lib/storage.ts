@@ -130,7 +130,7 @@ export async function provisionOrgBucket(tenantId: string): Promise<boolean> {
   if (!rows.length) return false;
   if (rows[0].storage_bucket) return true; // already provisioned (incl. BYO)
 
-  const prefix = process.env.EFFIGENT_S3_BUCKET_PREFIX || 'effigent-runs-';
+  const prefix = process.env.EFFIGENT_S3_BUCKET_PREFIX || 'effigent-';
   const bucket = `${prefix}${tenantId.replace(/-/g, '').slice(0, 12)}`;
   const s3 = new S3Client({ region });
 

@@ -41,7 +41,7 @@ const { rows } = await c.query(
 if (rows.length === 0) { console.error(`No tenant matches ref '${ref}'.`); process.exit(1); }
 if (rows.length > 1) { console.error(`Ref '${ref}' is ambiguous — be more specific.`); process.exit(1); }
 const tenant = rows[0];
-bucket = bucket || `effigent-runs-${tenant.id.replace(/-/g, '').slice(0, 12)}`;
+bucket = bucket || `effigent-${tenant.id.replace(/-/g, '').slice(0, 12)}`;
 
 const s3 = new S3Client({ region });
 try {
